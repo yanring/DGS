@@ -1,5 +1,8 @@
+import sys
+
+sys.path.append('/share/distbelief')
 import os
-import logging 
+import logging
 import argparse
 import csv
 import torch
@@ -10,6 +13,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
 
+from distbelief.optim import GradientSGD
+
 from datetime import datetime
 from models import LeNet, AlexNet
 from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
@@ -17,7 +22,8 @@ import pandas as pd
 
 import torch.optim as optim
 from distbelief.optim import DownpourSGD
-from distbelief.server import ParameterServer
+from distbelief.server import ParameterServer, GradientServer
+
 
 def get_dataset(args, transform):
     """
@@ -37,14 +43,14 @@ def get_dataset(args, transform):
     testloader = torch.utils.data.DataLoader(testset, batch_size=args.test_batch_size, shuffle=False, num_workers=1)
     return trainloader, testloader
 
-def main(args):
 
+def main(args):
     logs = []
 
     transform = transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-            ])
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+    ])
 
     trainloader, testloader = get_dataset(args, transform)
     net = AlexNet()
@@ -52,7 +58,8 @@ def main(args):
     if args.no_distributed:
         optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.0)
     else:
-        optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
+        optimizer = GradientSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
+        # optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=1, verbose=True, min_lr=1e-3)
 
     # train
@@ -86,18 +93,21 @@ def main(args):
                 'training_loss': loss.item(),
                 'training_accuracy': accuracy,
             }
-
-            if i % args.log_interval == 0 and i > 0:    # print every n mini-batches
-                log_obj['test_loss'], log_obj['test_accuracy']= evaluate( net, testloader, args)
+            if i % 20 == 0:
                 print("Timestamp: {timestamp} | "
                       "Iteration: {iteration:6} | "
                       "Loss: {training_loss:6.4f} | "
-                      "Accuracy : {training_accuracy:6.4f} | "
-                      "Test Loss: {test_loss:6.4f} | "
-                      "Test Accuracy: {test_accuracy:6.4f}".format(**log_obj))
+                      "Accuracy : {training_accuracy:6.4f} | ".format(**log_obj))
 
             logs.append(log_obj)
-                
+        if True:  # print every n mini-batches
+            logs[-1]['test_loss'], logs[-1]['test_accuracy'] = evaluate(net, testloader, args)
+            print("Timestamp: {timestamp} | "
+                  "Iteration: {iteration:6} | "
+                  "Loss: {training_loss:6.4f} | "
+                  "Accuracy : {training_accuracy:6.4f} | "
+                  "Test Loss: {test_loss:6.4f} | "
+                  "Test Accuracy: {test_accuracy:6.4f}".format(**logs[-1]))
         val_loss, val_accuracy = evaluate(net, testloader, args, verbose=True)
         scheduler.step(val_loss)
 
@@ -120,7 +130,7 @@ def evaluate(net, testloader, args, verbose=False):
     else:
         classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
     net.eval()
-   
+
     test_loss = 0
     with torch.no_grad():
         for data in testloader:
@@ -138,26 +148,33 @@ def evaluate(net, testloader, args, verbose=False):
         print('Loss: {:.3f}'.format(test_loss))
         print('Accuracy: {:.3f}'.format(test_accuracy))
         print(classification_report(predicted, labels, target_names=classes))
-    
+
     return test_loss, test_accuracy
+
 
 def init_server(args):
     model = AlexNet()
-    server = ParameterServer(model=model)
+    # server = ParameterServer(model=model)
+    server = GradientServer(model=model)
     server.run()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Distbelief training example')
-    parser.add_argument('--batch-size', type=int, default=64, metavar='N', help='input batch size for training (default: 64)')
-    parser.add_argument('--test-batch-size', type=int, default=10000, metavar='N', help='input batch size for testing (default: 10000)')
+    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
+                        help='input batch size for training (default: 64)')
+    parser.add_argument('--test-batch-size', type=int, default=10000, metavar='N',
+                        help='input batch size for testing (default: 10000)')
     parser.add_argument('--epochs', type=int, default=20, metavar='N', help='number of epochs to train (default: 20)')
-    parser.add_argument('--lr', type=float, default=0.003, metavar='LR', help='learning rate (default: 0.1)')
+    parser.add_argument('--lr', type=float, default=0.1, metavar='LR', help='learning rate (default: 0.1)')
     parser.add_argument('--num-pull', type=int, default=5, metavar='N', help='how often to pull params (default: 5)')
     parser.add_argument('--num-push', type=int, default=5, metavar='N', help='how often to push grads (default: 5)')
     parser.add_argument('--cuda', action='store_true', default=False, help='use CUDA for training')
     parser.add_argument('--log-interval', type=int, default=20, metavar='N', help='how often to evaluate and print out')
-    parser.add_argument('--no-distributed', action='store_true', default=False, help='whether to use DownpourSGD or normal SGD')
-    parser.add_argument('--rank', type=int, metavar='N', help='rank of current process (0 is server, 1+ is training node)')
+    parser.add_argument('--no-distributed', action='store_true', default=False,
+                        help='whether to use DownpourSGD or normal SGD')
+    parser.add_argument('--rank', type=int, metavar='N',
+                        help='rank of current process (0 is server, 1+ is training node)')
     parser.add_argument('--world-size', type=int, default=3, metavar='N', help='size of the world')
     parser.add_argument('--server', action='store_true', default=False, help='server node?')
     parser.add_argument('--dataset', type=str, default='CIFAR10', help='which dataset to train on')

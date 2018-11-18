@@ -20,10 +20,23 @@ def unravel_model_params(model, parameter_update):
     This is done by iterating through model.parameters() and assigning the relevant params in parameter_update.
     NOTE: this function manipulates model.parameters.
     """
-    current_index = 0 # keep track of where to read from parameter_update
+    current_index = 0  # keep track of where to read from parameter_update
     for parameter in model.parameters():
         numel = parameter.data.numel()
         size = parameter.data.size()
-        parameter.data.copy_(parameter_update[current_index:current_index+numel].view(size))
+        parameter.data.copy_(parameter_update[current_index:current_index + numel].view(size))
         current_index += numel
 
+
+def update_model_params(model, parameter_update, lr):
+    """
+    Assigns parameter_update params to model.parameters.
+    This is done by iterating through model.parameters() and adding the gradient in parameter_update.
+    NOTE: this function manipulates model.parameters.
+    """
+    current_index = 0  # keep track of where to read from parameter_update
+    for parameter in model.parameters():
+        numel = parameter.data.numel()
+        size = parameter.data.size()
+        parameter.data.add_(-lr, parameter_update[current_index:current_index + numel].view(size))
+        current_index += numel

@@ -6,8 +6,10 @@ from distbelief.utils.messaging import MessageCode, MessageListener, send_messag
 
 _LOGGER = logging.getLogger(__name__)
 
+
 class DownpourListener(MessageListener):
     """DownpourListener"""
+
     def __init__(self, model):
         super().__init__(model)
 
@@ -16,6 +18,7 @@ class DownpourListener(MessageListener):
         _LOGGER.info("Processing message: {}".format(message_code.name))
         if message_code == MessageCode.ParameterUpdate:
             unravel_model_params(self.model, parameter)
+
 
 class DownpourSGD(Optimizer):
     """DownpourSGD"""
@@ -31,7 +34,7 @@ class DownpourSGD(Optimizer):
         if lr is not required and lr < 0.0:
             raise ValueError("Invalid learning rate: {}".format(lr))
 
-        defaults = dict(lr=lr,)
+        defaults = dict(lr=lr, )
         self.accumulated_gradients = torch.zeros(ravel_model_params(model).size())
         self.n_pull = n_pull
         self.n_push = n_push
@@ -56,12 +59,12 @@ class DownpourSGD(Optimizer):
         loss = None
         if closure is not None:
             loss = closure()
-        
+
         # send parameter request every N iterations
         if self.idx % self.n_pull == 0:
-            send_message(MessageCode.ParameterRequest, self.accumulated_gradients) # dummy val 
+            send_message(MessageCode.ParameterRequest, self.accumulated_gradients)  # dummy val
 
-        #get the lr
+        # get the lr
         lr = self.param_groups[0]['lr']
         # keep track of accumulated gradients so that we can send 
         gradients = ravel_model_params(self.model, grads=True)
@@ -69,7 +72,7 @@ class DownpourSGD(Optimizer):
 
         # send gradient update every N iterations
         if self.idx % self.n_push == 0:
-            send_message(MessageCode.GradientUpdate, self.accumulated_gradients) # send gradients to the server
+            send_message(MessageCode.GradientUpdate, self.accumulated_gradients)  # send gradients to the server
             self.accumulated_gradients.zero_()
 
         # internal sgd update
@@ -79,6 +82,6 @@ class DownpourSGD(Optimizer):
                     continue
                 d_p = p.grad.data
                 p.data.add_(-group['lr'], d_p)
-        
+
         self.idx += 1
         return loss
