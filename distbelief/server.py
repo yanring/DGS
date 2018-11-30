@@ -41,7 +41,7 @@ class ParameterServer(MessageListener):
 class GradientWarehouse:
     """Warehouse for gradient, store multiple version of gradient"""
 
-    def __init__(self, model, version_num=30):
+    def __init__(self, model, version_num=10):
         self.gradient_storage = {}
         self.gradient_storage_state = {}
         self.version_num = version_num
@@ -59,18 +59,22 @@ class GradientWarehouse:
             # TODO: use add_ or average?
             self.gradient_storage[version].add_(gradient_update)
             self.gradient_storage_state[version].add(rank)
+
+
         else:
             # version does not exist
             if len(self.gradient_storage) > self.version_num:
-                # TODO: check node state, sync nodes which slower than self.version_num version
 
                 # pop the last one
                 lowest_gradient_key = min(self.gradient_storage_state)
+
                 if version < lowest_gradient_key:
-                    print("gradient version lower than lowest_gradient_key")
-                    self.gradient_storage[version] = gradient_update.clone()
-                    self.gradient_storage_state[version] = {rank}
-                    return
+                    # find a drop out node, sync node
+                    # print("gradient version lower than lowest_gradient_key")
+                    # self.gradient_storage[version] = gradient_update.clone()
+                    # self.gradient_storage_state[version] = {rank}
+                    # return gradient_update, version
+                    raise Exception('find a drop out node which should be synced!')
 
                 self.gradient_storage.pop(lowest_gradient_key)
                 self.gradient_storage_state.pop(lowest_gradient_key)
@@ -79,12 +83,21 @@ class GradientWarehouse:
                 # add new one
                 self.gradient_storage[version] = gradient_update.clone()
                 self.gradient_storage_state[version] = {rank}
-
-                # sync node
-                pass
             else:
                 self.gradient_storage[version] = gradient_update.clone()
                 self.gradient_storage_state[version] = {rank}
+
+        bound_version = max(self.gradient_storage_state) - self.version_num
+        if bound_version >= version > self.version_num + 10:
+            # TODO: check node state, sync nodes which slower than self.version_num version
+            # find a drop out node, sync this node
+            sync_to = max(self.gradient_storage_state) - 2
+            gradient_update = self.gradient_storage[bound_version].clone()
+            gradient_update.add_(self.get_bunch([i for i in range(version, sync_to)]))
+            print("sync node %d from version %d to version %d" % (rank, version, sync_to))
+            return gradient_update, sync_to
+
+        return self.gradient_storage[version], version
 
     def get(self, version):
         """
@@ -98,6 +111,17 @@ class GradientWarehouse:
         except Exception as e:
             print("version:%d gradient does not exist" % version)
             raise e
+
+    def get_bunch(self, version_list):
+        """
+        get sum of [version_list] gradients
+        :param version_list:
+        :return:
+        """
+        res = self.gradient_storage[version_list[0]].clone()
+        for i in version_list[1:]:
+            res.add_(self.gradient_storage[i])
+        return res
 
 
 class GradientServer(GradientMessageListener):
@@ -128,7 +152,7 @@ class GradientServer(GradientMessageListener):
 
         elif message_code == GSMessageCode.GradientUpdate:
             print("update gradient_warehouse")
-            self.gradient_warehouse.update(sender, gradient_version, parameter)
+            agg_gradient, new_version = self.gradient_warehouse.update(sender, gradient_version, parameter)
             print("send aggregated gradient back")
-            send_message(GSMessageCode.GradientUpdate, self.gradient_warehouse.get(gradient_version), dst=sender,
-                         gradient_version=gradient_version)
+            send_message(GSMessageCode.GradientUpdate, agg_gradient, dst=sender,
+                         gradient_version=new_version)
