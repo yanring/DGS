@@ -103,8 +103,8 @@ def main(args):
                   "Accuracy : {training_accuracy:6.4f} | "
                   "Test Loss: {test_loss:6.4f} | "
                   "Test Accuracy: {test_accuracy:6.4f}".format(**logs[-1]))
-        val_loss, val_accuracy = evaluate(net, testloader, args, verbose=True)
-        scheduler.step(val_loss)
+        # val_loss, val_accuracy = evaluate(net, testloader, args, verbose=True)
+        scheduler.step(logs[-1]['test_loss'])
 
     df = pd.DataFrame(logs)
     print(df)
@@ -130,7 +130,6 @@ def evaluate(net, testloader, args, verbose=False):
     with torch.no_grad():
         for data in testloader:
             images, labels = data
-
             if args.cuda:
                 images, labels = images.cuda(), labels.cuda()
 
@@ -160,8 +159,8 @@ if __name__ == "__main__":
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=10000, metavar='N',
                         help='input batch size for testing (default: 10000)')
-    parser.add_argument('--epochs', type=int, default=40, metavar='N', help='number of epochs to train (default: 20)')
-    parser.add_argument('--lr', type=float, default=0.1, metavar='LR', help='learning rate (default: 0.1)')
+    parser.add_argument('--epochs', type=int, default=20, metavar='N', help='number of epochs to train (default: 20)')
+    parser.add_argument('--lr', type=float, default=0.05, metavar='LR', help='learning rate (default: 0.1)')
     parser.add_argument('--num-pull', type=int, default=5, metavar='N', help='how often to pull params (default: 5)')
     parser.add_argument('--num-push', type=int, default=5, metavar='N', help='how often to push grads (default: 5)')
     parser.add_argument('--cuda', action='store_true', default=False, help='use CUDA for training')

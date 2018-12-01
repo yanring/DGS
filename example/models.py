@@ -1,6 +1,6 @@
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 
 class LeNet(nn.Module):
     def __init__(self):
@@ -15,12 +15,13 @@ class LeNet(nn.Module):
     def forward(self, x):
         x = F.relu(F.max_pool2d(self.conv1(x), 2))
         x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
-        x = x.view(-1, 16* 5* 5)
+        x = x.view(-1, 16 * 5 * 5)
         x = F.relu(self.fc1(x))
         x = F.dropout(x, training=self.training)
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
         return x
+
 
 class AlexNet(nn.Module):
     def __init__(self, num_classes=10):

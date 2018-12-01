@@ -5,9 +5,10 @@ Parameter server for distbelief
 import logging
 import torch
 import torch.optim
+
 from distbelief.utils.messaging import MessageCode, MessageListener, send_message, GSMessageCode, \
     GradientMessageListener
-from distbelief.utils.serialization import ravel_model_params, unravel_model_params
+from distbelief.utils.serialization import ravel_model_params
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -59,8 +60,6 @@ class GradientWarehouse:
             # TODO: use add_ or average?
             self.gradient_storage[version].add_(gradient_update)
             self.gradient_storage_state[version].add(rank)
-
-
         else:
             # version does not exist
             if len(self.gradient_storage) > self.version_num:
@@ -70,30 +69,29 @@ class GradientWarehouse:
 
                 if version < lowest_gradient_key:
                     # find a drop out node, sync node
-                    # print("gradient version lower than lowest_gradient_key")
+                    print("gradient version lower than lowest_gradient_key")
                     # self.gradient_storage[version] = gradient_update.clone()
                     # self.gradient_storage_state[version] = {rank}
                     # return gradient_update, version
-                    raise Exception('find a drop out node which should be synced!')
-
-                self.gradient_storage.pop(lowest_gradient_key)
-                self.gradient_storage_state.pop(lowest_gradient_key)
-                print("pop version:%d gradient" % lowest_gradient_key)
-
-                # add new one
-                self.gradient_storage[version] = gradient_update.clone()
-                self.gradient_storage_state[version] = {rank}
+                    # raise Exception('find a drop out node which should be synced!')
+                else:
+                    self.gradient_storage.pop(lowest_gradient_key)
+                    self.gradient_storage_state.pop(lowest_gradient_key)
+                    print("pop version:%d gradient" % lowest_gradient_key)
+                    # add new one
+                    self.gradient_storage[version] = gradient_update.clone()
+                    self.gradient_storage_state[version] = {rank}
             else:
                 self.gradient_storage[version] = gradient_update.clone()
                 self.gradient_storage_state[version] = {rank}
 
-        bound_version = max(self.gradient_storage_state) - self.version_num
-        if bound_version >= version > self.version_num + 10:
+        bound_version = max(self.gradient_storage) - self.version_num
+        if bound_version >= version > self.version_num + 2:
             # TODO: check node state, sync nodes which slower than self.version_num version
             # find a drop out node, sync this node
-            sync_to = max(self.gradient_storage_state) - 2
-            gradient_update = self.gradient_storage[bound_version].clone()
-            gradient_update.add_(self.get_bunch([i for i in range(version, sync_to)]))
+            sync_to = max(self.gradient_storage) - 2
+            # agg gradient from version to sync_to
+            gradient_update.add_(self.get_bunch([i for i in range(version + 1, sync_to)]))
             print("sync node %d from version %d to version %d" % (rank, version, sync_to))
             return gradient_update, sync_to
 
@@ -118,9 +116,14 @@ class GradientWarehouse:
         :param version_list:
         :return:
         """
-        res = self.gradient_storage[version_list[0]].clone()
-        for i in version_list[1:]:
-            res.add_(self.gradient_storage[i])
+        res = None
+        for i in version_list:
+            tmp_tensor = self.gradient_storage.get(i)
+            if tmp_tensor is None:
+                continue
+            if res is None:
+                res = tmp_tensor.clone()
+            res.add_(tmp_tensor)
         return res
 
 
