@@ -2,27 +2,22 @@ import sys
 
 sys.path.append('/share/distbelief')
 import os
-import logging
 import argparse
-import csv
 import torch
 import torchvision
 import torchvision.transforms as transforms
-import numpy as np
-import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
 
 from distbelief.optim import GradientSGD
 
 from datetime import datetime
-from models import LeNet, AlexNet
-from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
+from models import AlexNet
+from sklearn.metrics import classification_report, accuracy_score
 import pandas as pd
 
 import torch.optim as optim
-from distbelief.optim import DownpourSGD
-from distbelief.server import ParameterServer, GradientServer
+from distbelief.server import GradientServer
 
 
 def get_dataset(args, transform):
@@ -165,8 +160,8 @@ if __name__ == "__main__":
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=10000, metavar='N',
                         help='input batch size for testing (default: 10000)')
-    parser.add_argument('--epochs', type=int, default=20, metavar='N', help='number of epochs to train (default: 20)')
-    parser.add_argument('--lr', type=float, default=0.05, metavar='LR', help='learning rate (default: 0.1)')
+    parser.add_argument('--epochs', type=int, default=40, metavar='N', help='number of epochs to train (default: 20)')
+    parser.add_argument('--lr', type=float, default=0.1, metavar='LR', help='learning rate (default: 0.1)')
     parser.add_argument('--num-pull', type=int, default=5, metavar='N', help='how often to pull params (default: 5)')
     parser.add_argument('--num-push', type=int, default=5, metavar='N', help='how often to push grads (default: 5)')
     parser.add_argument('--cuda', action='store_true', default=False, help='use CUDA for training')

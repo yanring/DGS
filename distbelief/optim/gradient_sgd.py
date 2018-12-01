@@ -6,8 +6,9 @@ import torch
 import torch.distributed as dist
 from queue import Queue
 from torch.optim.optimizer import Optimizer, required
+
+from distbelief.utils.messaging import send_message, GSMessageCode, GradientMessageListener
 from distbelief.utils.serialization import ravel_model_params, update_model_params
-from distbelief.utils.messaging import MessageListener, send_message, GSMessageCode, GradientMessageListener
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ class GradientSGD(Optimizer):
         """
         if lr is not required and lr < 0.0:
             raise ValueError("Invalid learning rate: {}".format(lr))
-        print('rank:%d'%dist.get_rank())
+        print('I am node rank:%d' % dist.get_rank())
         defaults = dict(lr=lr, )
         self.accumulated_gradients = torch.zeros(ravel_model_params(model).size())
         self.model = model
@@ -59,7 +60,7 @@ class GradientSGD(Optimizer):
         self.idx = 0
         self.version = 0
         self.queue = Queue(maxsize=1)
-        self.listener = GradientListener(self.model,self.queue)
+        self.listener = GradientListener(self.model, self.queue)
         self.listener.start()
 
         super(GradientSGD, self).__init__(params, defaults)
