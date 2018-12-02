@@ -1,5 +1,7 @@
 import sys
 
+from torch.utils.data.distributed import DistributedSampler
+
 sys.path.append('/share/distbelief')
 import os
 import argparse
@@ -34,7 +36,9 @@ def get_dataset(args, transform):
         trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
         testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
 
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, shuffle=True, num_workers=1)
+    sampler = DistributedSampler(trainset, args.world_size - 1, args.rank - 1)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, shuffle=False, num_workers=1,
+                                              sampler=sampler)
     testloader = torch.utils.data.DataLoader(testset, batch_size=args.test_batch_size, shuffle=False, num_workers=1)
     return trainloader, testloader
 
@@ -55,7 +59,7 @@ def main(args):
     else:
         optimizer = GradientSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
         # optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=1, verbose=True, min_lr=1e-3)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=1, verbose=True, min_lr=1e-3, cooldown=1)
 
     # train
     net.train()
@@ -64,6 +68,8 @@ def main(args):
 
     for epoch in range(args.epochs):  # loop over the dataset multiple times
         print("Training for epoch {}".format(epoch))
+        # set distributed_sampler.epoch to shuffle data.
+        trainloader.sampler.set_epoch(epoch)
         for i, data in enumerate(trainloader, 0):
             # get the inputs
             inputs, labels = data
@@ -159,7 +165,7 @@ if __name__ == "__main__":
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=10000, metavar='N',
                         help='input batch size for testing (default: 10000)')
-    parser.add_argument('--epochs', type=int, default=20, metavar='N', help='number of epochs to train (default: 20)')
+    parser.add_argument('--epochs', type=int, default=40, metavar='N', help='number of epochs to train (default: 20)')
     parser.add_argument('--lr', type=float, default=0.05, metavar='LR', help='learning rate (default: 0.1)')
     parser.add_argument('--num-pull', type=int, default=5, metavar='N', help='how often to pull params (default: 5)')
     parser.add_argument('--num-push', type=int, default=5, metavar='N', help='how often to push grads (default: 5)')
