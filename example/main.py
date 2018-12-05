@@ -1,16 +1,17 @@
 import sys
 
-from torch.utils.data.distributed import DistributedSampler
-
-sys.path.append('/share/distbelief')
 import os
+
+WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname('main.py')))
+sys.path.append(WORKPATH)
+
 import argparse
 import torch
 import torchvision
 import torchvision.transforms as transforms
 import torch.nn.functional as F
 import torch.distributed as dist
-
+from torch.utils.data.distributed import DistributedSampler
 from distbelief.optim import GradientSGD
 
 from datetime import datetime
@@ -19,7 +20,7 @@ from sklearn.metrics import classification_report, accuracy_score
 import pandas as pd
 
 import torch.optim as optim
-from distbelief.server import GradientServer
+from distbelief.server import GradientServer, GradientWarehouse
 
 
 def get_dataset(args, transform):
@@ -59,7 +60,7 @@ def main(args):
     else:
         optimizer = GradientSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
         # optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=1, verbose=True, min_lr=1e-3, cooldown=1)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, verbose=True, min_lr=1e-3, cooldown=1)
 
     # train
     net.train()
@@ -154,9 +155,17 @@ def evaluate(net, testloader, args, verbose=False):
 
 def init_server(args):
     model = AlexNet()
+    gradient_warehouse = GradientWarehouse()
+    threads_num = 20
+    threads = []
+    for i in range(threads_num):
+        th = GradientServer(model=model, gradient_warehouse=gradient_warehouse, rank=i)
+        threads.append(th)
+        th.start()
+    for t in threads:
+        t.join()
     # server = ParameterServer(model=model)
-    server = GradientServer(model=model)
-    server.run()
+    # time.sleep(10000000)
 
 
 if __name__ == "__main__":
@@ -165,7 +174,7 @@ if __name__ == "__main__":
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=10000, metavar='N',
                         help='input batch size for testing (default: 10000)')
-    parser.add_argument('--epochs', type=int, default=40, metavar='N', help='number of epochs to train (default: 20)')
+    parser.add_argument('--epochs', type=int, default=30, metavar='N', help='number of epochs to train (default: 20)')
     parser.add_argument('--lr', type=float, default=0.05, metavar='LR', help='learning rate (default: 0.1)')
     parser.add_argument('--num-pull', type=int, default=5, metavar='N', help='how often to pull params (default: 5)')
     parser.add_argument('--num-push', type=int, default=5, metavar='N', help='how often to push grads (default: 5)')
@@ -187,9 +196,17 @@ if __name__ == "__main__":
         """ Initialize the distributed environment.
         Server and clients must call this as an entry point.
         """
-        os.environ['MASTER_ADDR'] = args.master
-        os.environ['MASTER_PORT'] = args.port
-        dist.init_process_group('tcp', rank=args.rank, world_size=args.world_size)
+        # os.environ['MASTER_ADDR'] = args.master
+        # os.environ['MASTER_PORT'] = args.port
+        print('%s/sharedfile chmod' % WORKPATH)
+        if os.path.exists('%s/sharedfile' % WORKPATH):
+            try:
+                os.chmod('%s/sharedfile' % WORKPATH, 0o777)
+                print('%s/sharedfile chmod success' % WORKPATH)
+            except Exception as e:
+                print(e)
+        dist.init_process_group('tcp', init_method='file://%s/sharedfile' % WORKPATH, group_name='mygroup',
+                                world_size=args.world_size, rank=args.rank)
         if args.server:
             init_server(args)
     main(args)

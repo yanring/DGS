@@ -1,5 +1,3 @@
-import time
-
 import logging
 import torch
 import torch.distributed as dist
@@ -16,16 +14,18 @@ class GradientListener(GradientMessageListener):
     """DownpourListener"""
 
     def __init__(self, model, queue):
-        super().__init__(model)
+        super(GradientListener, self).__init__(model)
         self.lr = 0.05
         self.queue = queue
+        self.version = 0
 
     def receive(self, sender, message_code, gradient_version, parameter, ):
         """receive parameter updates from the server and reflect them into the client's model."""
         _LOGGER.info("Processing message: {}, version: {}, lr: {}".format(message_code.name, gradient_version, self.lr))
         if message_code == GSMessageCode.GradientUpdate:
             update_model_params(self.model, parameter, self.lr)
-            self.queue.put(gradient_version)
+            self.version = gradient_version
+            # self.queue.put(gradient_version)
 
 
 class GradientSGD(Optimizer):
@@ -67,9 +67,9 @@ class GradientSGD(Optimizer):
             loss = closure()
 
         # increase version No.
-        self.version += 1
-        if dist.get_rank() == 1:
-            time.sleep(0.1)
+        # self.version += 1
+        # if dist.get_rank() == 1:
+        #     time.sleep(0.03)
 
         # get the lr
         lr = self.param_groups[0]['lr']
@@ -77,10 +77,10 @@ class GradientSGD(Optimizer):
 
         # keep track of accumulated gradients so that we can send 
         gradients = ravel_model_params(self.model, grads=True)
-        send_message(GSMessageCode.GradientUpdate, gradients, dst=0, gradient_version=self.version)
+        send_message(GSMessageCode.GradientUpdate, gradients, dst=0, gradient_version=self.listener.version + 1)
 
         # reset gradient version
-        self.version = self.queue.get()
+        # self.version = self.queue.get()
 
         self.idx += 1
         return loss

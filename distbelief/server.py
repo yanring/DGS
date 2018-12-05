@@ -2,6 +2,7 @@
 """
 Parameter server for distbelief
 """
+
 import logging
 import torch
 import torch.optim
@@ -22,14 +23,13 @@ class ParameterServer(MessageListener):
         self.parameter_shard = torch.rand(ravel_model_params(model).numel())
         self.model = model
         # init superclass
-        super().__init__(model)
+        super(ParameterServer, self).__init__(model)
 
     def receive(self, sender, message_code, parameter):
         print("Processing message: {} from sender {}".format(message_code.name, sender))
 
         if message_code == MessageCode.ParameterUpdate:
             # be sure to clone here
-            # 因为只是个引用，所以必须要克隆 yan
             self.parameter_shard = parameter.clone()
 
         elif message_code == MessageCode.ParameterRequest:
@@ -42,7 +42,7 @@ class ParameterServer(MessageListener):
 class GradientWarehouse:
     """Warehouse for gradient, store multiple version of gradient"""
 
-    def __init__(self, model, version_num=10):
+    def __init__(self, version_num=10):
         self.gradient_storage = {}
         self.gradient_storage_state = {}
         self.version_num = version_num
@@ -86,7 +86,8 @@ class GradientWarehouse:
                 self.gradient_storage_state[version] = {rank}
 
         bound_version = max(self.gradient_storage) - self.version_num
-        if bound_version >= version > self.version_num + 2:
+        print('bound_version=%d' % bound_version)
+        if bound_version >= version > self.version_num:
             # TODO: check node state, sync nodes which slower than self.version_num version
             # find a drop out node, sync this node
             sync_to = max(self.gradient_storage) - 2
@@ -131,21 +132,22 @@ class GradientServer(GradientMessageListener):
     # TODO
     """GradientServer"""
 
-    def __init__(self, model, storage_num=10):
+    def __init__(self, model, gradient_warehouse, storage_num=10, rank=0):
         _LOGGER.info("Creating GradientServer")
         print("Creating GradientServer")
         # self.parameter_shard = torch.rand(ravel_model_params(model).numel())
         self.model = model
-        self.gradient_warehouse = GradientWarehouse(model, storage_num)
-        super().__init__(model)
+        self.gradient_warehouse = gradient_warehouse
+        self.rank = rank
+        super(GradientServer, self).__init__(model)
 
     def receive(self, sender, message_code, gradient_version, parameter):
-        print("Processing message: {} from sender {} gradient version {}".format(message_code.name, sender,
-                                                                                 gradient_version))
+        print("rank {} Processing message: {} from sender {} gradient version {}".format(self.rank, message_code.name,
+                                                                                         sender,
+                                                                                         gradient_version))
         #
         # if message_code == GSMessageCode.ParameterUpdate:
         #     # be sure to clone here
-        #     # 因为只是个引用，所以必须要克隆 yan
         #     raise Exception("GSMessageCode.ParameterUpdate no implement")
         # self.parameter_shard = parameter.clone()
 
@@ -159,3 +161,6 @@ class GradientServer(GradientMessageListener):
             print("send aggregated gradient back")
             send_message(GSMessageCode.GradientUpdate, agg_gradient, dst=sender,
                          gradient_version=new_version)
+
+        # if self.rank % 2:
+        #     time.sleep(5)
