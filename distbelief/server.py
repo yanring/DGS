@@ -42,10 +42,14 @@ class ParameterServer(MessageListener):
 class GradientWarehouse:
     """Warehouse for gradient, store multiple version of gradient"""
 
-    def __init__(self, version_num=10):
+    def __init__(self, version_num=10, worker_num=2):
+        self.worker_num = worker_num
         self.gradient_storage = {}
         self.gradient_storage_state = {}
         self.version_num = version_num
+        self.triggers = {}  # Triggers are set by fast nodes who need slow nodes' gradients.
+        for i in range(1, worker_num + 1):
+            self.triggers[i] = []
 
     def update(self, rank, version, gradient_update):
         """
@@ -85,6 +89,7 @@ class GradientWarehouse:
                 self.gradient_storage[version] = gradient_update.clone()
                 self.gradient_storage_state[version] = {rank}
 
+        # sync slow nodes
         bound_version = max(self.gradient_storage) - self.version_num
         print('bound_version=%d' % bound_version)
         if bound_version >= version > self.version_num:
@@ -94,9 +99,39 @@ class GradientWarehouse:
             # agg gradient from version to sync_to
             gradient_update.add_(self.get_bunch([i for i in range(version + 1, sync_to)]))
             print("sync node %d from version %d to version %d" % (rank, version, sync_to))
-            return gradient_update, sync_to
+            return gradient_update, sync_to, []
 
-        return self.gradient_storage[version], version
+        # sync fast nodes
+        if len(self.gradient_storage_state[version]) <= self.worker_num / 2:
+            # set trigger
+            self.triggers[rank].append(version)
+
+        flag = 1
+        trigger_expired_list = []
+        trigger_used_list = []
+        for trigger in self.triggers[rank]:
+            # check old triggers
+            if trigger <= bound_version:
+                # gradient expired
+                trigger_expired_list.append(trigger)
+                continue
+            if self.gradient_storage_state[trigger] > self.worker_num / 2:
+                if flag:
+                    gradient_update = self.gradient_storage[version].clone()
+                    flag = 0
+                gradient_update.add_(self.gradient_storage[trigger])
+                trigger_used_list.append(trigger)
+                break
+
+        for trigger in trigger_used_list + trigger_expired_list:
+            # remove used and expired trigger
+            self.triggers[rank].remove(trigger)
+
+        if flag is 0:
+            # trigger triggered
+            return gradient_update, version, trigger_used_list
+
+        return self.gradient_storage[version], version, []
 
     def get(self, version):
         """
@@ -157,10 +192,10 @@ class GradientServer(GradientMessageListener):
 
         elif message_code == GSMessageCode.GradientUpdate:
             print("update gradient_warehouse")
-            agg_gradient, new_version = self.gradient_warehouse.update(sender, gradient_version, parameter)
+            agg_gradient, new_version, triggers = self.gradient_warehouse.update(sender, gradient_version, parameter)
             print("send aggregated gradient back")
             send_message(GSMessageCode.GradientUpdate, agg_gradient, dst=sender,
-                         gradient_version=new_version)
+                         gradient_version=new_version, trigger=triggers[0])
 
         # if self.rank % 2:
         #     time.sleep(5)

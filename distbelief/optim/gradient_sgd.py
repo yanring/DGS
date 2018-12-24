@@ -19,7 +19,7 @@ class GradientListener(GradientMessageListener):
         self.queue = queue
         self.version = 0
 
-    def receive(self, sender, message_code, gradient_version, parameter, ):
+    def receive(self, sender, message_code, gradient_version, trigger, parameter, ):
         """receive parameter updates from the server and reflect them into the client's model."""
         _LOGGER.info("Processing message: {}, version: {}, lr: {}".format(message_code.name, gradient_version, self.lr))
         if message_code == GSMessageCode.GradientUpdate:
