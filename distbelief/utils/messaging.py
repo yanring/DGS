@@ -74,12 +74,13 @@ class GradientMessageListener(Thread):
         """
         self.model = model
         _LOGGER.info("Setting m_parameter")
-        self.m_parameter = torch.zeros(ravel_model_params(model).numel() + 4)
+        self.m_parameter = torch.zeros(ravel_model_params(model).numel() + 5)
         super(GradientMessageListener, self).__init__()
 
-    def receive(self, sender, message_code, gradient_version, trigger, parameter):
+    def receive(self, sender, message_code, gradient_version, trigger, fast_flag, parameter):
         """receive
 
+        :param fast_flag:
         :param trigger:
         :param gradient_version:
         :param sender: rank id of the sender
@@ -98,16 +99,17 @@ class GradientMessageListener(Thread):
                          GSMessageCode(self.m_parameter[1].item()),
                          int(self.m_parameter[2].item()),
                          int(self.m_parameter[3].item()),
-                         self.m_parameter[4:])
+                         int(self.m_parameter[4].item()),
+                         self.m_parameter[5:])
 
 
-def send_message(message_code, payload, dst=0, gradient_version=None, trigger=0):
+def send_message(message_code, payload, dst=0, gradient_version=None, trigger=0, fast_flag=0):
     """Sends a message to a destination
     Concatenates both the message code and destination with the payload into a single tensor and then sends that as a tensor
     """
     _LOGGER.info("SENDING MESSAGE: {} RANK: {}".format(message_code, dist.get_rank()))
     if gradient_version:
-        m_parameter = torch.Tensor([dist.get_rank(), message_code.value, gradient_version, trigger])
+        m_parameter = torch.Tensor([dist.get_rank(), message_code.value, gradient_version, trigger, fast_flag])
     else:
         m_parameter = torch.Tensor([dist.get_rank(), message_code.value])
         print("DONNNNNNNNT!!")

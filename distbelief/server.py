@@ -59,6 +59,7 @@ class GradientWarehouse:
         :return:
         """
         print("update gradient from rank%d,version%d" % (rank, version))
+        fast_flag = 0
         if version in self.gradient_storage.keys():
             # version exist
             # TODO: use add_ or average?
@@ -99,14 +100,15 @@ class GradientWarehouse:
             # agg gradient from version to sync_to
             gradient_update.add_(self.get_bunch([i for i in range(version + 1, sync_to)]))
             print("sync node %d from version %d to version %d" % (rank, version, sync_to))
-            return gradient_update, sync_to, []
+            return gradient_update, sync_to, [0], fast_flag
 
         # sync fast nodes
         if len(self.gradient_storage_state[version]) <= self.worker_num / 2:
-            # set trigger
+            # set trigger and fast flag
             self.triggers[rank].append(version)
+            fast_flag = 1
 
-        flag = 1
+        sync_fast_flag = 0
         trigger_expired_list = []
         trigger_used_list = []
         for trigger in self.triggers[rank]:
@@ -115,23 +117,24 @@ class GradientWarehouse:
                 # gradient expired
                 trigger_expired_list.append(trigger)
                 continue
-            if self.gradient_storage_state[trigger] > self.worker_num / 2:
-                if flag:
+            if len(self.gradient_storage_state[trigger]) > self.worker_num / 2:
+                if not sync_fast_flag:
                     gradient_update = self.gradient_storage[version].clone()
-                    flag = 0
+                    sync_fast_flag = 1
                 gradient_update.add_(self.gradient_storage[trigger])
                 trigger_used_list.append(trigger)
+                print("Sync-fast: change fast node rank %d gradient version %d" % (rank, trigger))
                 break
 
         for trigger in trigger_used_list + trigger_expired_list:
-            # remove used and expired trigger
+            # remove used and expired triggers
             self.triggers[rank].remove(trigger)
 
-        if flag is 0:
+        if sync_fast_flag:
             # trigger triggered
-            return gradient_update, version, trigger_used_list
+            return gradient_update, version, trigger_used_list, fast_flag
 
-        return self.gradient_storage[version], version, []
+        return self.gradient_storage[version], version, [0], fast_flag
 
     def get(self, version):
         """
@@ -176,7 +179,7 @@ class GradientServer(GradientMessageListener):
         self.rank = rank
         super(GradientServer, self).__init__(model)
 
-    def receive(self, sender, message_code, gradient_version, parameter):
+    def receive(self, sender, message_code, gradient_version, trigger, fast_flag, parameter):
         print("rank {} Processing message: {} from sender {} gradient version {}".format(self.rank, message_code.name,
                                                                                          sender,
                                                                                          gradient_version))
@@ -191,11 +194,12 @@ class GradientServer(GradientMessageListener):
                          gradient_version=gradient_version)
 
         elif message_code == GSMessageCode.GradientUpdate:
-            print("update gradient_warehouse")
-            agg_gradient, new_version, triggers = self.gradient_warehouse.update(sender, gradient_version, parameter)
-            print("send aggregated gradient back")
+            # print("update gradient_warehouse")
+            agg_gradient, new_version, triggers, fast_flag = self.gradient_warehouse.update(sender, gradient_version,
+                                                                                            parameter)
+            # print("send aggregated gradient back")
             send_message(GSMessageCode.GradientUpdate, agg_gradient, dst=sender,
-                         gradient_version=new_version, trigger=triggers[0])
+                         gradient_version=new_version, trigger=triggers[0], fast_flag=fast_flag)
 
         # if self.rank % 2:
         #     time.sleep(5)

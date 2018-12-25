@@ -156,7 +156,7 @@ def evaluate(net, testloader, args, verbose=False):
 def init_server(args):
     model = AlexNet()
     gradient_warehouse = GradientWarehouse(worker_num=args.world_size)
-    threads_num = 20
+    threads_num = 1
     threads = []
     for i in range(threads_num):
         th = GradientServer(model=model, gradient_warehouse=gradient_warehouse, rank=i)
