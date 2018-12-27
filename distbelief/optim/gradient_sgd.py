@@ -29,6 +29,16 @@ class WorkerGradientWarehouse(object):
     def pop(self, version):
         return self.gradient_storage.pop(version)
 
+    def clean_redundant(self, bound=20):
+        try:
+            cur_version = max(self.gradient_storage.keys())
+        except Exception as e:
+            return
+        key_list = list(self.gradient_storage.keys())
+        for i in key_list:
+            if cur_version - bound > i:
+                self.remove(i)
+
 
 class GradientListener(GradientMessageListener):
     """DownpourListener"""
@@ -46,10 +56,10 @@ class GradientListener(GradientMessageListener):
         _LOGGER.info("Processing message: {}, version: {}, lr: {}".format(message_code.name, gradient_version, self.lr))
         if message_code == GSMessageCode.GradientUpdate:
             update_model_params(self.model, parameter, self.lr)
-
             if not fast_flag:
                 # means this version of gradient should not stored by worker cuz this worker is not a fast-node
                 self.gradient_warehouse.remove(self.version + 1)
+            # print(len(self.gradient_warehouse.gradient_storage), self.gradient_warehouse.gradient_storage.keys())
             self.version = gradient_version
             if trigger is not 0:
                 # received lower nodes' gradient
@@ -113,6 +123,9 @@ class GradientSGD(Optimizer):
 
         # reset gradient version
         self.queue.get()
+
+        if self.idx % 100 == 1:
+            self.gradient_warehouse.clean_redundant()
 
         self.idx += 1
         return loss
