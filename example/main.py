@@ -1,6 +1,7 @@
 import sys
 
 import os
+import threading
 
 WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname('main.py')))
 sys.path.append(WORKPATH)
@@ -60,7 +61,7 @@ def main(args):
     else:
         optimizer = GradientSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
         # optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, verbose=True, min_lr=1e-3, cooldown=1)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=0, verbose=True, min_lr=1e-5)
 
     # train
     net.train()
@@ -95,7 +96,7 @@ def main(args):
                 'training_loss': loss.item(),
                 'training_accuracy': accuracy,
             }
-            if i % 20 == 0:
+            if i % 1 == 0:
                 print("Timestamp: {timestamp} | "
                       "Iteration: {iteration:6} | "
                       "Loss: {training_loss:6.4f} | "
@@ -155,8 +156,8 @@ def evaluate(net, testloader, args, verbose=False):
 
 def init_server(args):
     model = AlexNet()
-    gradient_warehouse = GradientWarehouse(worker_num=args.world_size)
-    threads_num = 1
+    gradient_warehouse = GradientWarehouse(worker_num=args.world_size, lock=threading.Lock())
+    threads_num = 2
     threads = []
     for i in range(threads_num):
         th = GradientServer(model=model, gradient_warehouse=gradient_warehouse, rank=i)
@@ -174,7 +175,7 @@ if __name__ == "__main__":
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=10000, metavar='N',
                         help='input batch size for testing (default: 10000)')
-    parser.add_argument('--epochs', type=int, default=10, metavar='N', help='number of epochs to train (default: 20)')
+    parser.add_argument('--epochs', type=int, default=20, metavar='N', help='number of epochs to train (default: 20)')
     parser.add_argument('--lr', type=float, default=0.05, metavar='LR', help='learning rate (default: 0.1)')
     parser.add_argument('--num-pull', type=int, default=5, metavar='N', help='how often to pull params (default: 5)')
     parser.add_argument('--num-push', type=int, default=5, metavar='N', help='how often to push grads (default: 5)')
