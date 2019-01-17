@@ -1,8 +1,9 @@
-from enum import Enum
 import logging
 import torch
 import torch.distributed as dist
+from enum import Enum
 from threading import Thread
+
 from distbelief.utils.serialization import ravel_model_params
 
 _LOGGER = logging.getLogger(__name__)
@@ -22,6 +23,8 @@ class GSMessageCode(Enum):
     GradientUpdate = 1
     # ParameterUpdate = 2
     EvaluateParams = 3
+    ModelRequest = 4
+    ModelUpdate = 5
 
 
 class MessageListener(Thread):
@@ -103,10 +106,6 @@ def send_message(message_code, payload, dst=0, gradient_version=None):
     Concatenates both the message code and destination with the payload into a single tensor and then sends that as a tensor
     """
     _LOGGER.info("SENDING MESSAGE: {} RANK: {}".format(message_code, dist.get_rank()))
-    if gradient_version:
-        m_parameter = torch.Tensor([dist.get_rank(), message_code.value, gradient_version])
-    else:
-        m_parameter = torch.Tensor([dist.get_rank(), message_code.value])
-        print("DONNNNNNNNT!!")
+    m_parameter = torch.Tensor([dist.get_rank(), message_code.value, gradient_version])
     m_parameter = torch.cat((m_parameter, payload))
     dist.isend(tensor=m_parameter, dst=dst)

@@ -1,13 +1,17 @@
+import time
+
 import logging
+import threading
 import torch
 import torch.distributed as dist
 from queue import Queue
 from torch.optim.optimizer import Optimizer, required
 
 from distbelief.utils.messaging import send_message, GSMessageCode, GradientMessageListener
-from distbelief.utils.serialization import ravel_model_params, update_model_params
+from distbelief.utils.serialization import ravel_model_params, update_model_params, unravel_model_params
 
 _LOGGER = logging.getLogger(__name__)
+lock = threading.Lock()
 
 
 class GradientListener(GradientMessageListener):
@@ -16,7 +20,7 @@ class GradientListener(GradientMessageListener):
     def __init__(self, model, queue):
         super(GradientListener, self).__init__(model)
         self.lr = 0.05
-        self.queue = queue
+        # self.queue = queue
         self.version = 0
 
     def receive(self, sender, message_code, gradient_version, parameter, ):
@@ -26,6 +30,19 @@ class GradientListener(GradientMessageListener):
             update_model_params(self.model, parameter, self.lr)
             self.version = gradient_version
             # self.queue.put(gradient_version)
+        elif message_code == GSMessageCode.ModelRequest:
+            lock.acquire()
+            model = ravel_model_params(self.model, grads=False)
+            print(model)
+            # self.queue.put((GSMessageCode.ModelUpdate, model, 0, 0, 0, 0))  # send current model
+            send_message(GSMessageCode.ModelUpdate, model, dst=0, gradient_version=0)
+            print('send model to server')
+        elif message_code == GSMessageCode.ModelUpdate:
+            print(parameter)
+            unravel_model_params(self.model, parameter)
+            self.version = gradient_version
+            print('unravel_model_params')
+            lock.release()
 
 
 class GradientSGD(Optimizer):
@@ -68,12 +85,19 @@ class GradientSGD(Optimizer):
 
         # increase version No.
         # self.version += 1
-        # if dist.get_rank() == 1:
-        #     time.sleep(0.03)
+        if dist.get_rank() == 1:
+            time.sleep(0.03)
 
         # get the lr
         lr = self.param_groups[0]['lr']
         self.listener.lr = lr
+
+        if lock.locked():
+            # skip this iteration
+            lock.acquire()
+            lock.release()
+
+            return loss
 
         # keep track of accumulated gradients so that we can send 
         gradients = ravel_model_params(self.model, grads=True)
@@ -83,4 +107,5 @@ class GradientSGD(Optimizer):
         # self.version = self.queue.get()
 
         self.idx += 1
+
         return loss

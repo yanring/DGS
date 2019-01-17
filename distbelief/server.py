@@ -4,6 +4,7 @@ Parameter server for distbelief
 """
 
 import logging
+import threading
 import torch
 import torch.optim
 
@@ -12,6 +13,7 @@ from distbelief.utils.messaging import MessageCode, MessageListener, send_messag
 from distbelief.utils.serialization import ravel_model_params
 
 _LOGGER = logging.getLogger(__name__)
+cond = threading.Condition()
 
 
 class ParameterServer(MessageListener):
@@ -42,10 +44,12 @@ class ParameterServer(MessageListener):
 class GradientWarehouse:
     """Warehouse for gradient, store multiple version of gradient"""
 
-    def __init__(self, version_num=10):
+    def __init__(self, version_num=10, worker_num=3):
         self.gradient_storage = {}
         self.gradient_storage_state = {}
         self.version_num = version_num
+        self.worker_count = 0
+        self.worker_num = worker_num
 
     def update(self, rank, version, gradient_update):
         """
@@ -127,6 +131,20 @@ class GradientWarehouse:
             res.add_(tmp_tensor)
         return res
 
+    def sync_model(self, rank, model):
+        print('model from rank %d' % rank)
+        self.model.add_(1 / (self.worker_num - 1), model)
+        self.worker_count += 1
+        with cond:
+            if self.worker_count < self.worker_num - 1:
+                cond.wait()
+            else:
+                print(self.worker_count)
+                cond.notify()
+            # print(self.worker_count)
+        version = max(self.gradient_storage)
+        return self.model, version
+
 
 class GradientServer(GradientMessageListener):
     # TODO
@@ -136,10 +154,11 @@ class GradientServer(GradientMessageListener):
         _LOGGER.info("Creating GradientServer")
         print("Creating GradientServer")
         # self.parameter_shard = torch.rand(ravel_model_params(model).numel())
-        self.model = model
         self.gradient_warehouse = gradient_warehouse
         self.rank = rank
         super(GradientServer, self).__init__(model)
+        self.model = torch.zeros(ravel_model_params(model).numel())
+        self.gradient_warehouse.model = self.model
 
     def receive(self, sender, message_code, gradient_version, parameter):
         print("rank {} Processing message: {} from sender {} gradient version {}".format(self.rank, message_code.name,
@@ -151,9 +170,24 @@ class GradientServer(GradientMessageListener):
         #     raise Exception("GSMessageCode.ParameterUpdate no implement")
         # self.parameter_shard = parameter.clone()
 
-        if message_code == GSMessageCode.GradientRequest:
-            send_message(GSMessageCode.ParameterUpdate, self.gradient_warehouse.get(gradient_version), dst=sender,
-                         gradient_version=gradient_version)
+        if sender is 1 and gradient_version % 20 is 1 and message_code == GSMessageCode.GradientUpdate and gradient_version > 800:
+
+            # if not self.gradient_warehouse.lock.locked():
+            #     self.gradient_warehouse.lock.acquire()
+            for i in range(1, self.gradient_warehouse.worker_num):
+                print('Send model request to worker %d' % i)
+                send_message(GSMessageCode.ModelRequest, self.model, dst=i,
+                             gradient_version=0)
+                # self.gradient_warehouse.lock.release()
+
+        if message_code == GSMessageCode.ModelUpdate:
+            model, new_version = self.gradient_warehouse.sync_model(sender, parameter)
+            send_message(GSMessageCode.ModelUpdate, model, dst=sender,
+                         gradient_version=new_version)
+            print('Send updated model to worker %d' % sender)
+            self.gradient_warehouse.worker_count -= 1
+            if self.gradient_warehouse.worker_count == 0:
+                self.gradient_warehouse.model = torch.zeros(self.gradient_warehouse.model.numel())
 
         elif message_code == GSMessageCode.GradientUpdate:
             print("update gradient_warehouse")

@@ -37,7 +37,8 @@ def get_dataset(args, transform):
         trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
         testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
 
-    sampler = DistributedSampler(trainset, args.world_size - 1, args.rank - 1)
+    # sampler = DistributedSampler(trainset, args.world_size - 1, args.rank - 1)
+    sampler = DistributedSampler(trainset, 1, 0)
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, shuffle=False, num_workers=1,
                                               sampler=sampler)
     testloader = torch.utils.data.DataLoader(testset, batch_size=args.test_batch_size, shuffle=False, num_workers=1)
@@ -54,13 +55,14 @@ def main(args):
 
     trainloader, testloader = get_dataset(args, transform)
     net = AlexNet()
+    # ResNet()
 
     if args.no_distributed:
         optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.0)
     else:
         optimizer = GradientSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
         # optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, verbose=True, min_lr=1e-3, cooldown=1)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=1, verbose=True, min_lr=1e-5, cooldown=1)
 
     # train
     net.train()
@@ -155,8 +157,8 @@ def evaluate(net, testloader, args, verbose=False):
 
 def init_server(args):
     model = AlexNet()
-    gradient_warehouse = GradientWarehouse()
-    threads_num = 20
+    gradient_warehouse = GradientWarehouse(worker_num=args.world_size)
+    threads_num = 2
     threads = []
     for i in range(threads_num):
         th = GradientServer(model=model, gradient_warehouse=gradient_warehouse, rank=i)
