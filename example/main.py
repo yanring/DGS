@@ -37,8 +37,8 @@ def get_dataset(args, transform):
         trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
         testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
 
-    # sampler = DistributedSampler(trainset, args.world_size - 1, args.rank - 1)
-    sampler = DistributedSampler(trainset, 1, 0)
+    sampler = DistributedSampler(trainset, args.world_size - 1, args.rank - 1)
+    # sampler = DistributedSampler(trainset, 1, 0)
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, shuffle=False, num_workers=1,
                                               sampler=sampler)
     testloader = torch.utils.data.DataLoader(testset, batch_size=args.test_batch_size, shuffle=False, num_workers=1)
@@ -157,7 +157,7 @@ def evaluate(net, testloader, args, verbose=False):
 
 def init_server(args):
     model = AlexNet()
-    gradient_warehouse = GradientWarehouse(worker_num=args.world_size)
+    gradient_warehouse = GradientWarehouse(worker_num=args.world_size, model=model)
     threads_num = 2
     threads = []
     for i in range(threads_num):
@@ -176,12 +176,12 @@ if __name__ == "__main__":
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=10000, metavar='N',
                         help='input batch size for testing (default: 10000)')
-    parser.add_argument('--epochs', type=int, default=30, metavar='N', help='number of epochs to train (default: 20)')
+    parser.add_argument('--epochs', type=int, default=20, metavar='N', help='number of epochs to train (default: 20)')
     parser.add_argument('--lr', type=float, default=0.05, metavar='LR', help='learning rate (default: 0.1)')
     parser.add_argument('--num-pull', type=int, default=5, metavar='N', help='how often to pull params (default: 5)')
     parser.add_argument('--num-push', type=int, default=5, metavar='N', help='how often to push grads (default: 5)')
     parser.add_argument('--cuda', action='store_true', default=False, help='use CUDA for training')
-    parser.add_argument('--log-interval', type=int, default=20, metavar='N', help='how often to evaluate and print out')
+    parser.add_argument('--log-interval', type=int, default=10, metavar='N', help='how often to evaluate and print out')
     parser.add_argument('--no-distributed', action='store_true', default=False,
                         help='whether to use DownpourSGD or normal SGD')
     parser.add_argument('--rank', type=int, metavar='N',
