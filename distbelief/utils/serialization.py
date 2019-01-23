@@ -40,3 +40,23 @@ def update_model_params(model, parameter_update, lr):
         size = parameter.data.size()
         parameter.data.add_(-lr, parameter_update[current_index:current_index + numel].view(size))
         current_index += numel
+
+
+def gradient_filter(net):
+    rate = 0.01
+    # paralist = []
+    for param in net.parameters():
+        temp = param.grad.data.clone()
+        topn = torch.topk(abs(temp.view(1, -1)), int(temp.nelement() * rate) if int(temp.nelement() * rate) != 0 else 1)
+        threshold = float(topn[0][0][-1])
+        temp[abs(temp) >= threshold] = 0
+        param.grad.data[abs(param.grad.data) < threshold] = 0
+
+
+def ravel_sparse_gradient(net):
+    gradient_filter(net)
+    temp_param = ravel_model_params(net, grads=True)
+    index = torch.LongTensor(torch.where(temp_param != 0))
+    value = temp_param[temp_param != 0]
+    size = index.numel()
+    return size, index, value

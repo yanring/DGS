@@ -89,8 +89,8 @@ class GradientServer(GradientMessageListener):
         super(GradientServer, self).__init__(model)
         self.model = torch.zeros(ravel_model_params(model).numel())
         self.gradient_warehouse.model = self.model
-        self.sync_worker_model(1, 1)
-        self.sync_worker_model(2, 1)
+        for i in range(1, self.gradient_warehouse.worker_num):
+            self.sync_worker_model(i, 1)
         self.un_synced_worker = set()
 
     def sync_worker_model(self, sender, version):

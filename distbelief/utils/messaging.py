@@ -1,10 +1,12 @@
+import time
+
 import logging
 import torch
 import torch.distributed as dist
 from enum import Enum
 from threading import Thread
 
-from distbelief.utils.serialization import ravel_model_params
+from distbelief.utils.serialization import ravel_model_params, ravel_sparse_gradient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,6 +27,9 @@ class GSMessageCode(Enum):
     EvaluateParams = 3
     ModelRequest = 4
     ModelUpdate = 5
+    SparseSize = 6
+    SparseIndex = 7
+    SparseValue = 8
 
 
 class MessageListener(Thread):
@@ -94,7 +99,13 @@ class GradientMessageListener(Thread):
         self.running = True
         while self.running:
             _LOGGER.info("Polling for message...")
-            dist.recv(tensor=self.m_parameter)
+            # dist.recv(tensor=self.m_parameter)
+            i = torch.LongTensor([[0, 1, 1],
+                                  [2, 0, 2]])
+            v = torch.FloatTensor([3, 4, 5])
+            m_parameter = torch.sparse.FloatTensor(i, v, torch.Size([10, 3]))
+            dist.recv(tensor=m_parameter)
+            print(m_parameter)
             self.receive(int(self.m_parameter[0].item()),
                          GSMessageCode(self.m_parameter[1].item()),
                          int(self.m_parameter[2].item()),
@@ -109,3 +120,13 @@ def send_message(message_code, payload, dst=0, gradient_version=None):
     m_parameter = torch.Tensor([dist.get_rank(), message_code.value, gradient_version])
     m_parameter = torch.cat((m_parameter, payload))
     dist.isend(tensor=m_parameter, dst=dst)
+
+
+def send_sparse_gradient(net, dst=0, gradient_version=None):
+    _LOGGER.info("SENDING SPARSE MESSAGE: {} RANK: {}".format('send_sparse_message', dist.get_rank()))
+    size, index, value = ravel_sparse_gradient(net)
+    send_message(GSMessageCode.SparseSize, size, dst, gradient_version)
+    time.sleep(0.5)
+    send_message(GSMessageCode.SparseIndex, index, dst, gradient_version)
+    send_message(GSMessageCode.SparseValue, value, dst, gradient_version)
+    # dist.isend(tensor=m_parameter, dst=dst)

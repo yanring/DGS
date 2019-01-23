@@ -105,6 +105,9 @@ class GradientSGD(Optimizer):
         # keep track of accumulated gradients so that we can send 
         gradients = ravel_model_params(self.model, grads=True)
 
+        # print(ravel_model_params(self.model, grads=True).sum())
+        # gradient_filter(self.model)
+        # print(ravel_model_params(self.model, grads=True).sum())
         send_message(GSMessageCode.GradientUpdate, gradients.mul_(lr), dst=0,
                      gradient_version=self.listener.version + 1)
 
