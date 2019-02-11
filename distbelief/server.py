@@ -10,7 +10,7 @@ import torch.optim
 
 from distbelief.utils.messaging import MessageCode, MessageListener, send_message, GSMessageCode, \
     GradientMessageListener
-from distbelief.utils.serialization import ravel_model_params
+from distbelief.utils.serialization import ravel_model_params, unravel_sparse_gradient
 
 _LOGGER = logging.getLogger(__name__)
 cond = threading.Condition()
@@ -85,13 +85,14 @@ class GradientServer(GradientMessageListener):
         print("Creating GradientServer")
         # self.parameter_shard = torch.rand(ravel_model_params(model).numel())
         self.gradient_warehouse = gradient_warehouse
-        self.rank = rank
-        super(GradientServer, self).__init__(model)
+        # self.source = rank
+        super(GradientServer, self).__init__(model, source=rank)
         self.model = torch.zeros(ravel_model_params(model).numel())
         self.gradient_warehouse.model = self.model
         for i in range(1, self.gradient_warehouse.worker_num):
             self.sync_worker_model(i, 1)
-        self.un_synced_worker = set()
+        self.un_synced_worker = {}
+        self.node_gradient = {}
 
     def sync_worker_model(self, sender, version):
         # if sender == 2:
@@ -99,14 +100,14 @@ class GradientServer(GradientMessageListener):
         send_message(GSMessageCode.ModelUpdate, model, dst=sender, gradient_version=version)
 
     def receive(self, sender, message_code, gradient_version, parameter):
-        print("rank {} Processing message: {} from sender {} gradient version {}".format(self.rank, message_code.name,
+        print("rank {} Processing message: {} from sender {} gradient version {}".format(self.source, message_code.name,
                                                                                          sender,
                                                                                          gradient_version))
 
         if message_code == GSMessageCode.GradientUpdate:
             agg_gradient, new_version = self.gradient_warehouse.update(sender, gradient_version, parameter)
 
-            if sender == 1 and self.gradient_warehouse.max_version % 100 is 1:
+            if sender == 1 and self.gradient_warehouse.max_version % 100 is 1 and self.gradient_warehouse.max_version>50:
                 self.gradient_warehouse.sync_model()
                 self.un_synced_worker = set(range(1, self.gradient_warehouse.worker_num))
             if sender in self.un_synced_worker:
@@ -118,5 +119,21 @@ class GradientServer(GradientMessageListener):
                 send_message(GSMessageCode.GradientUpdate, agg_gradient,
                              dst=sender,
                              gradient_version=new_version)
+        elif message_code == GSMessageCode.SparseGradientUpdate:
+            parameter = unravel_sparse_gradient(parameter)
+            agg_gradient, new_version = self.gradient_warehouse.update(sender, gradient_version, parameter)
+            if sender == 1 and self.gradient_warehouse.max_version % 100 is 1 and self.gradient_warehouse.max_version > 50:
+                self.gradient_warehouse.sync_model()
+                self.un_synced_worker = set(range(1, self.gradient_warehouse.worker_num))
+            if sender in self.un_synced_worker:
+                self.sync_worker_model(sender, new_version)
+                self.un_synced_worker.remove(sender)
+            else:
+                # print('synced_model:', self.gradient_warehouse.synced_model)
+                # print('updated_model:', self.gradient_warehouse.synced_model.add(agg_gradient))
+                send_message(GSMessageCode.GradientUpdate, agg_gradient,
+                             dst=sender,
+                             gradient_version=new_version)
+
         else:
             raise Exception('GSMessageCode not implemented')

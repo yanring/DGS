@@ -1,3 +1,4 @@
+import os
 import time
 
 import logging
@@ -27,9 +28,7 @@ class GSMessageCode(Enum):
     EvaluateParams = 3
     ModelRequest = 4
     ModelUpdate = 5
-    SparseSize = 6
-    SparseIndex = 7
-    SparseValue = 8
+    SparseGradientUpdate = 6
 
 
 class MessageListener(Thread):
@@ -74,14 +73,17 @@ class GradientMessageListener(Thread):
     base class for message listeners, extends pythons threading Thread
     """
 
-    def __init__(self, model):
+    def __init__(self, model, source=0):
         """__init__
 
         :param model: nn.Module to be defined by the user
         """
         self.model = model
+        self.source = source
         _LOGGER.info("Setting m_parameter")
         self.m_parameter = torch.zeros(ravel_model_params(model).numel() + 3)
+        self.cached_stamp = 0
+        self.size_filename = None
         super(GradientMessageListener, self).__init__()
 
     def receive(self, sender, message_code, gradient_version, parameter):
@@ -94,18 +96,48 @@ class GradientMessageListener(Thread):
         """
         raise NotImplementedError()
 
+    # def run(self):
+    #     # for dense gradient transmission
+    #     _LOGGER.info("Started Running!")
+    #     self.running = True
+    #     while self.running:
+    #         _LOGGER.info("Polling for dense message...")
+    #         # dist.recv(tensor=self.m_parameter)
+    #         # i = torch.LongTensor([[0, 1, 1],
+    #         #                       [2, 0, 2]])
+    #         # v = torch.FloatTensor([3, 4, 5])
+    #         # m_parameter = torch.sparse.FloatTensor(i, v, torch.Size([10, 3]))
+    #         sender = dist.recv(tensor=self.m_parameter)
+    #         # print(m_parameter)
+    #         self.receive(int(self.m_parameter[0].item()),
+    #                      GSMessageCode(self.m_parameter[1].item()),
+    #                      int(self.m_parameter[2].item()),
+    #                      self.m_parameter[3:])
+
     def run(self):
+        # for sparse gradient transmission
         _LOGGER.info("Started Running!")
         self.running = True
+        self.size_filename = '%dto%d.size' % (self.source, dist.get_rank())
+        while not os.path.exists(self.size_filename):
+            time.sleep(0.5)
         while self.running:
-            _LOGGER.info("Polling for message...")
-            # dist.recv(tensor=self.m_parameter)
-            i = torch.LongTensor([[0, 1, 1],
-                                  [2, 0, 2]])
-            v = torch.FloatTensor([3, 4, 5])
-            m_parameter = torch.sparse.FloatTensor(i, v, torch.Size([10, 3]))
-            dist.recv(tensor=m_parameter)
-            print(m_parameter)
+            _LOGGER.info("Polling for sparse message...")
+            # time.sleep(0.1)
+            while os.stat(self.size_filename).st_mtime == self.cached_stamp or os.stat(self.size_filename).st_mtime - self.cached_stamp < 0.01:
+                time.sleep(0.01)
+            # print(self.cached_stamp, os.stat(self.size_filename).st_mtime)
+            time.sleep(0.05)
+            self.cached_stamp = os.stat(self.size_filename).st_mtime
+            with open(self.size_filename, 'r') as f:
+                try:
+                    size = int(float(f.read().strip()))
+                    print('%s RECEIVING MESSAGE %dto%d.size:%d, changed time : %s' % (str(time.time()), self.source, dist.get_rank(), size,str(self.cached_stamp)))
+                    self.m_parameter = torch.zeros(size + 3)
+                except Exception as e:
+                    print(f.read())
+                    raise (e)
+            sender = dist.recv(tensor=self.m_parameter, src=self.source)
             self.receive(int(self.m_parameter[0].item()),
                          GSMessageCode(self.m_parameter[1].item()),
                          int(self.m_parameter[2].item()),
@@ -118,15 +150,22 @@ def send_message(message_code, payload, dst=0, gradient_version=None):
     """
     _LOGGER.info("SENDING MESSAGE: {} RANK: {}".format(message_code, dist.get_rank()))
     m_parameter = torch.Tensor([dist.get_rank(), message_code.value, gradient_version])
+    # print(m_parameter.size(), payload.size())
     m_parameter = torch.cat((m_parameter, payload))
-    dist.isend(tensor=m_parameter, dst=dst)
+    print('%s SENDING MESSAGE %s gradient_version %d, %dto%d.size:%d' % (
+    str(time.time()), message_code, gradient_version, dist.get_rank(), dst, payload.numel()))
+    size = str(payload.numel())
+    with open('%dto%d.size' % (dist.get_rank(), dst), 'w') as f:
+        f.write(size)
+    dist.send(tensor=m_parameter, dst=dst)
 
-
-def send_sparse_gradient(net, dst=0, gradient_version=None):
-    _LOGGER.info("SENDING SPARSE MESSAGE: {} RANK: {}".format('send_sparse_message', dist.get_rank()))
-    size, index, value = ravel_sparse_gradient(net)
-    send_message(GSMessageCode.SparseSize, size, dst, gradient_version)
-    time.sleep(0.5)
-    send_message(GSMessageCode.SparseIndex, index, dst, gradient_version)
-    send_message(GSMessageCode.SparseValue, value, dst, gradient_version)
-    # dist.isend(tensor=m_parameter, dst=dst)
+#
+# def send_sparse_gradient(net, dst=0, gradient_version=None):
+#     _LOGGER.info("SENDING SPARSE MESSAGE: {} RANK: {}".format('send_sparse_message', dist.get_rank()))
+#     # size, sparse_gradient = ravel_sparse_gradient(net)
+#     # send_message(GSMessageCode.SparseSize, size, dst, gradient_version)
+#     # time.sleep(0.1)
+#     raise Exception('')
+#     # send_message(GSMessageCode.SparseIndex, index, dst, gradient_version)
+#     # send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst, gradient_version)
+#     # dist.isend(tensor=m_parameter, dst=dst)

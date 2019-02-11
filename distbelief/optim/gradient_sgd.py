@@ -6,7 +6,8 @@ from queue import Queue
 from torch.optim.optimizer import Optimizer, required
 
 from distbelief.utils.messaging import send_message, GSMessageCode, GradientMessageListener
-from distbelief.utils.serialization import ravel_model_params, update_model_params, unravel_model_params
+from distbelief.utils.serialization import ravel_model_params, update_model_params, unravel_model_params, \
+    ravel_sparse_gradient
 
 _LOGGER = logging.getLogger(__name__)
 lock = threading.Lock()
@@ -26,6 +27,7 @@ class GradientListener(GradientMessageListener):
     def receive(self, sender, message_code, gradient_version, parameter, ):
         """receive parameter updates from the server and reflect them into the client's model."""
         _LOGGER.info("Processing message: {}, version: {}, lr: {}".format(message_code.name, gradient_version, self.lr))
+        print("Processing message: {}, version: {}, lr: {}".format(message_code.name, gradient_version, self.lr))
         if message_code == GSMessageCode.GradientUpdate:
             update_model_params(self.model, self.tmp_add_gradient, 1)
             # print('synced model :', ravel_model_params(self.model))
@@ -103,15 +105,17 @@ class GradientSGD(Optimizer):
         self.listener.lr = lr
 
         # keep track of accumulated gradients so that we can send 
-        gradients = ravel_model_params(self.model, grads=True)
+        # gradients = ravel_model_params(self.model, grads=True)
+        gradients = ravel_sparse_gradient(self.model, lr=lr)
 
         # print(ravel_model_params(self.model, grads=True).sum())
-        # gradient_filter(self.model)
         # print(ravel_model_params(self.model, grads=True).sum())
-        send_message(GSMessageCode.GradientUpdate, gradients.mul_(lr), dst=0,
-                     gradient_version=self.listener.version + 1)
+        # send_message(GSMessageCode.GradientUpdate, gradients.mul_(lr), dst=0,
+        #              gradient_version=self.listener.version + 1)
+        send_message(GSMessageCode.SparseGradientUpdate, gradients, dst=0, gradient_version=self.listener.version + 1)
 
         # reset gradient version
         self.version = self.queue.get()
+        # print(self.version)
         self.idx += 1
         return loss

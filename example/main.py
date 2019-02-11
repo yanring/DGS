@@ -1,9 +1,11 @@
 import sys
 
 import os
-
 WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname('main.py')))
 sys.path.append(WORKPATH)
+from distbelief.utils.serialization import ravel_sparse_gradient, unravel_sparse_gradient
+
+
 
 import argparse
 import torch
@@ -15,7 +17,7 @@ from torch.utils.data.distributed import DistributedSampler
 from distbelief.optim import GradientSGD
 
 from datetime import datetime
-from models import AlexNet
+from example.models import AlexNet
 from sklearn.metrics import classification_report, accuracy_score
 import pandas as pd
 
@@ -60,6 +62,7 @@ def main(args):
     if args.no_distributed:
         optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.0)
     else:
+        print('distributed model')
         optimizer = GradientSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
         # optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=1, verbose=True, min_lr=1e-5, cooldown=1)
@@ -86,6 +89,9 @@ def main(args):
             outputs = net(inputs)
             loss = F.cross_entropy(outputs, labels)
             loss.backward()
+            # _, a = ravel_sparse_gradient(net)
+            # b = unravel_sparse_gradient(a)
+
             optimizer.step()
 
             _, predicted = torch.max(outputs, 1)
@@ -156,11 +162,12 @@ def evaluate(net, testloader, args, verbose=False):
 
 
 def init_server(args):
+    os.system('rm *.size')
     model = AlexNet()
     gradient_warehouse = GradientWarehouse(worker_num=args.world_size, model=model)
-    threads_num = 2
+    threads_num = dist.get_world_size() - 1
     threads = []
-    for i in range(threads_num):
+    for i in range(1, threads_num + 1):
         th = GradientServer(model=model, gradient_warehouse=gradient_warehouse, rank=i)
         threads.append(th)
         th.start()

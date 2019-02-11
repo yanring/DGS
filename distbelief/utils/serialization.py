@@ -42,21 +42,46 @@ def update_model_params(model, parameter_update, lr):
         current_index += numel
 
 
+# def gradient_filter(net):
+#     rate = 0.5
+#     # paralist = []
+#     for param in net.parameters():
+#         temp = param.grad.data.clone()
+#         topn = torch.topk(abs(temp.view(1, -1)), int(temp.nelement() * rate) if int(temp.nelement() * rate) != 0 else 1)
+#         threshold = float(topn[0][0][-1])
+#         # temp[abs(temp) >= threshold] = 0
+#         param.grad.data[abs(param.grad.data) < threshold] = 0
 def gradient_filter(net):
-    rate = 0.01
+    rate = 0.5
+    threshold = 0.00001
     # paralist = []
     for param in net.parameters():
-        temp = param.grad.data.clone()
-        topn = torch.topk(abs(temp.view(1, -1)), int(temp.nelement() * rate) if int(temp.nelement() * rate) != 0 else 1)
-        threshold = float(topn[0][0][-1])
-        temp[abs(temp) >= threshold] = 0
+        # temp = param.grad.data.clone()
+        # topn = torch.topk(abs(temp.view(1, -1)), int(temp.nelement() * rate) if int(temp.nelement() * rate) != 0 else 1)
+        # threshold = float(topn[0][0][-1])
+        # temp[abs(temp) >= threshold] = 0
         param.grad.data[abs(param.grad.data) < threshold] = 0
 
 
-def ravel_sparse_gradient(net):
+def ravel_sparse_gradient(net, lr=1):
     gradient_filter(net)
     temp_param = ravel_model_params(net, grads=True)
-    index = torch.LongTensor(torch.where(temp_param != 0))
-    value = temp_param[temp_param != 0]
-    size = index.numel()
-    return size, index, value
+    indices = temp_param.nonzero()
+    values = temp_param[indices].mul_(lr)
+    # value = temp_param[temp_param != 0]
+    # print(values.sum())
+    # size = indices.numel()
+    sparse_gradient = torch.cat((indices.float(), values)).view(-1)
+    # print(indices.t().size(),values.view(-1).size(),temp_param.size())
+    return sparse_gradient
+
+
+def unravel_sparse_gradient(sparse_gradient):
+    # len is 2472266
+    split = int(len(sparse_gradient) / 2)
+    i = sparse_gradient[:split]
+    v = sparse_gradient[split:]
+    # print(i.t().long().size(), v.size(),torch.Size([2472266]))
+    dense_gradient = torch.sparse.FloatTensor(i.reshape(1,-1).long(), v, torch.Size([2472266])).to_dense()
+    # print(dense_gradient.sum())
+    return dense_gradient
