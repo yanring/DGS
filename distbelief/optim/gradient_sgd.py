@@ -27,7 +27,7 @@ class GradientListener(GradientMessageListener):
     def receive(self, sender, message_code, gradient_version, parameter, ):
         """receive parameter updates from the server and reflect them into the client's model."""
         _LOGGER.info("Processing message: {}, version: {}, lr: {}".format(message_code.name, gradient_version, self.lr))
-        print("Processing message: {}, version: {}, lr: {}".format(message_code.name, gradient_version, self.lr))
+        # print("Processing message: {}, version: {}, lr: {}".format(message_code.name, gradient_version, self.lr))
         if message_code == GSMessageCode.GradientUpdate:
             update_model_params(self.model, self.tmp_add_gradient, 1)
             # print('synced model :', ravel_model_params(self.model))

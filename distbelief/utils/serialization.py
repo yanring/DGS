@@ -53,7 +53,7 @@ def update_model_params(model, parameter_update, lr):
 #         param.grad.data[abs(param.grad.data) < threshold] = 0
 def gradient_filter(net):
     rate = 0.5
-    threshold = 0.00001
+    threshold = 0.0001
     # paralist = []
     for param in net.parameters():
         # temp = param.grad.data.clone()
@@ -64,10 +64,14 @@ def gradient_filter(net):
 
 
 def ravel_sparse_gradient(net, lr=1):
-    gradient_filter(net)
-    temp_param = ravel_model_params(net, grads=True)
+    # gradient_filter(net)
+    temp_param = ravel_model_params(net, grads=True).mul_(lr)
+    # threshold = 0.0001
+    threshold = 0.000002 * abs(temp_param).sum()
+    print(abs(temp_param).sum())
+    temp_param[abs(temp_param) < threshold] = 0
     indices = temp_param.nonzero()
-    values = temp_param[indices].mul_(lr)
+    values = temp_param[indices]
     # value = temp_param[temp_param != 0]
     # print(values.sum())
     # size = indices.numel()
@@ -82,6 +86,6 @@ def unravel_sparse_gradient(sparse_gradient):
     i = sparse_gradient[:split]
     v = sparse_gradient[split:]
     # print(i.t().long().size(), v.size(),torch.Size([2472266]))
-    dense_gradient = torch.sparse.FloatTensor(i.reshape(1,-1).long(), v, torch.Size([2472266])).to_dense()
+    dense_gradient = torch.sparse.FloatTensor(i.reshape(1, -1).long(), v, torch.Size([2472266])).to_dense()
     # print(dense_gradient.sum())
     return dense_gradient

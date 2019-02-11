@@ -132,7 +132,8 @@ class GradientMessageListener(Thread):
             with open(self.size_filename, 'r') as f:
                 try:
                     size = int(float(f.read().strip()))
-                    print('%s RECEIVING MESSAGE %dto%d.size:%d, changed time : %s' % (str(time.time()), self.source, dist.get_rank(), size,str(self.cached_stamp)))
+                    if dist.get_rank() == 0 :
+                        print('%s RECEIVING MESSAGE %dto%d.size:%d, changed time : %s' % (str(time.time()), self.source, dist.get_rank(), size,str(self.cached_stamp)))
                     self.m_parameter = torch.zeros(size + 3)
                 except Exception as e:
                     print(f.read())
@@ -152,8 +153,8 @@ def send_message(message_code, payload, dst=0, gradient_version=None):
     m_parameter = torch.Tensor([dist.get_rank(), message_code.value, gradient_version])
     # print(m_parameter.size(), payload.size())
     m_parameter = torch.cat((m_parameter, payload))
-    print('%s SENDING MESSAGE %s gradient_version %d, %dto%d.size:%d' % (
-    str(time.time()), message_code, gradient_version, dist.get_rank(), dst, payload.numel()))
+    # print('%s SENDING MESSAGE %s gradient_version %d, %dto%d.size:%d' % (
+    # str(time.time()), message_code, gradient_version, dist.get_rank(), dst, payload.numel()))
     size = str(payload.numel())
     with open('%dto%d.size' % (dist.get_rank(), dst), 'w') as f:
         f.write(size)
