@@ -53,6 +53,7 @@ class GradientWarehouse:
         self.global_model = ravel_model_params(model)
         self.synced_model = ravel_model_params(model)
         self.synced_version = 0
+        self.un_synced_worker = {}
 
     def update(self, rank, version, gradient_update):
         """
@@ -89,9 +90,9 @@ class GradientServer(GradientMessageListener):
         super(GradientServer, self).__init__(model, source=rank)
         self.model = torch.zeros(ravel_model_params(model).numel())
         self.gradient_warehouse.model = self.model
-        for i in range(1, self.gradient_warehouse.worker_num):
-            self.sync_worker_model(i, 1)
-        self.un_synced_worker = {}
+        if rank == 1:
+            for i in range(1, self.gradient_warehouse.worker_num):
+                self.sync_worker_model(i, 1)
         self.node_gradient = {}
 
     def sync_worker_model(self, sender, version):
@@ -107,12 +108,12 @@ class GradientServer(GradientMessageListener):
         if message_code == GSMessageCode.GradientUpdate:
             agg_gradient, new_version = self.gradient_warehouse.update(sender, gradient_version, parameter)
 
-            if sender == 1 and self.gradient_warehouse.max_version % 100 is 1 and self.gradient_warehouse.max_version>50:
+            if sender == 1 and self.gradient_warehouse.max_version % 100 is 1 and self.gradient_warehouse.max_version > 10:
                 self.gradient_warehouse.sync_model()
-                self.un_synced_worker = set(range(1, self.gradient_warehouse.worker_num))
-            if sender in self.un_synced_worker:
+                self.gradient_warehouse.un_synced_worker = set(range(1, self.gradient_warehouse.worker_num))
+            if sender in self.gradient_warehouse.un_synced_worker:
                 self.sync_worker_model(sender, new_version)
-                self.un_synced_worker.remove(sender)
+                self.gradient_warehouse.un_synced_worker.remove(sender)
             else:
                 # print('synced_model:', self.gradient_warehouse.synced_model)
                 # print('updated_model:', self.gradient_warehouse.synced_model.add(agg_gradient))
@@ -124,13 +125,21 @@ class GradientServer(GradientMessageListener):
             agg_gradient, new_version = self.gradient_warehouse.update(sender, gradient_version, parameter)
             if sender == 1 and self.gradient_warehouse.max_version % 100 is 1 and self.gradient_warehouse.max_version > 50:
                 self.gradient_warehouse.sync_model()
-                self.un_synced_worker = set(range(1, self.gradient_warehouse.worker_num))
-            if sender in self.un_synced_worker:
+                self.gradient_warehouse.un_synced_worker = set(range(1, self.gradient_warehouse.worker_num))
+            if sender in self.gradient_warehouse.un_synced_worker:
                 self.sync_worker_model(sender, new_version)
-                self.un_synced_worker.remove(sender)
+                self.gradient_warehouse.un_synced_worker.remove(sender)
+                # self.un_synced_worker = set(range(1, self.gradient_warehouse.worker_num))
+            # if sender in self.un_synced_worker:
+            #     self.sync_worker_model(sender, new_version)
+            #     self.un_synced_worker.remove(sender)
             else:
                 # print('synced_model:', self.gradient_warehouse.synced_model)
                 # print('updated_model:', self.gradient_warehouse.synced_model.add(agg_gradient))
+                # sparse_agg_gradient = ravel_sparse_gradient(agg_gradient)
+                # send_message(GSMessageCode.SparseGradientUpdate, sparse_agg_gradient,
+                #              dst=sender,
+                #              gradient_version=new_version)
                 send_message(GSMessageCode.GradientUpdate, agg_gradient,
                              dst=sender,
                              gradient_version=new_version)

@@ -1,3 +1,5 @@
+import time
+
 import torch
 
 
@@ -42,34 +44,52 @@ def update_model_params(model, parameter_update, lr):
         current_index += numel
 
 
-# def gradient_filter(net):
-#     rate = 0.5
-#     # paralist = []
-#     for param in net.parameters():
-#         temp = param.grad.data.clone()
-#         topn = torch.topk(abs(temp.view(1, -1)), int(temp.nelement() * rate) if int(temp.nelement() * rate) != 0 else 1)
-#         threshold = float(topn[0][0][-1])
-#         # temp[abs(temp) >= threshold] = 0
-#         param.grad.data[abs(param.grad.data) < threshold] = 0
+# def gradient_filter(param):
+#     rate = 0.01
+#     grad = param.grad.data
+#     topn = torch.kthvalue(abs(grad.view(1, -1)), int(grad.nelement() * (1 - rate)))
+#     threshold = float(topn[0])
+#     param.grad.data[abs(param.grad.data) < threshold] = 0
+#     # print(abs(param.grad.data).sum())
+#     return threshold
+
+
+#
+def mp_gradient_filter(net):
+    # TODO 用numpy做多进程
+    # start = time.time()
+    res = list(map(gradient_filter, net.parameters()))
+    # for param,threshold in zip(net.parameters(),res):
+    #     print(abs(param.grad.data).sum())
+    # param.grad.data = torch.where(param<threshold,param,torch.full_like(param, 0))
+    # param.grad.data[abs(param.grad.data) < threshold] = 0
+    # end = time.time()
+    # print(end - start)
+
+
+
 def gradient_filter(net):
+    start = time.time()
     rate = 0.5
-    threshold = 0.0001
+    # threshold = 0.0001
     # paralist = []
     for param in net.parameters():
-        # temp = param.grad.data.clone()
-        # topn = torch.topk(abs(temp.view(1, -1)), int(temp.nelement() * rate) if int(temp.nelement() * rate) != 0 else 1)
-        # threshold = float(topn[0][0][-1])
+        temp = param.grad.data.clone()
+        topn = torch.topk(abs(temp.view(1, -1)), int(temp.nelement() * rate) if int(temp.nelement() * rate) != 0 else 1)
+        threshold = float(topn[0][0][-1])
         # temp[abs(temp) >= threshold] = 0
         param.grad.data[abs(param.grad.data) < threshold] = 0
+    end = time.time()
+    print(end - start)
 
 
-def ravel_sparse_gradient(net, lr=1):
+def ravel_sparse_gradient(temp_param):
     # gradient_filter(net)
-    temp_param = ravel_model_params(net, grads=True).mul_(lr)
+    # temp_param = ravel_model_params(net, grads=True).mul_(lr)
     # threshold = 0.0001
-    threshold = 0.000002 * abs(temp_param).sum()
-    print(abs(temp_param).sum())
-    temp_param[abs(temp_param) < threshold] = 0
+    # threshold = 0.000001 * abs(temp_param).sum()
+    # print(abs(temp_param).sum())
+    # temp_param[abs(temp_param) < threshold] = 0
     indices = temp_param.nonzero()
     values = temp_param[indices]
     # value = temp_param[temp_param != 0]

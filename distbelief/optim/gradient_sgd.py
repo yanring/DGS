@@ -7,7 +7,7 @@ from torch.optim.optimizer import Optimizer, required
 
 from distbelief.utils.messaging import send_message, GSMessageCode, GradientMessageListener
 from distbelief.utils.serialization import ravel_model_params, update_model_params, unravel_model_params, \
-    ravel_sparse_gradient
+    ravel_sparse_gradient, unravel_sparse_gradient, mp_gradient_filter
 
 _LOGGER = logging.getLogger(__name__)
 lock = threading.Lock()
@@ -36,7 +36,16 @@ class GradientListener(GradientMessageListener):
             self.tmp_add_gradient = parameter.clone()
             self.version = gradient_version
             self.queue.put(gradient_version)
-            # raise Exception()
+        elif message_code == GSMessageCode.SparseGradientUpdate:
+            parameter = unravel_sparse_gradient(parameter)
+            # same as the GradientUpdate
+            update_model_params(self.model, self.tmp_add_gradient, 1)
+            # print('synced model :', ravel_model_params(self.model))
+            update_model_params(self.model, parameter, -1)
+            # print('updated model :', ravel_model_params(self.model))
+            self.tmp_add_gradient = parameter.clone()
+            self.version = gradient_version
+            self.queue.put(gradient_version)
         elif message_code == GSMessageCode.ModelRequest:
             # lock.acquire()
             model = ravel_model_params(self.model, grads=False)
@@ -51,7 +60,8 @@ class GradientListener(GradientMessageListener):
             self.version = gradient_version
             print('sync model!')
             self.flag = True
-            self.queue.put(gradient_version)
+            if self.version > 20:
+                self.queue.put(gradient_version)
             # lock.release()
 
 
@@ -106,13 +116,11 @@ class GradientSGD(Optimizer):
 
         # keep track of accumulated gradients so that we can send 
         # gradients = ravel_model_params(self.model, grads=True)
-        gradients = ravel_sparse_gradient(self.model, lr=lr)
-
-        # print(ravel_model_params(self.model, grads=True).sum())
-        # print(ravel_model_params(self.model, grads=True).sum())
-        # send_message(GSMessageCode.GradientUpdate, gradients.mul_(lr), dst=0,
-        #              gradient_version=self.listener.version + 1)
-        send_message(GSMessageCode.SparseGradientUpdate, gradients, dst=0, gradient_version=self.listener.version + 1)
+        mp_gradient_filter(self.model)
+        raveled_gradients = ravel_model_params(self.model, grads=True).mul_(lr)
+        sparse_gradient = ravel_sparse_gradient(raveled_gradients)
+        send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst=0,
+                     gradient_version=self.listener.version + 1)
 
         # reset gradient version
         self.version = self.queue.get()

@@ -1,13 +1,13 @@
-import os
 import time
 
 import logging
+import os
 import torch
 import torch.distributed as dist
 from enum import Enum
 from threading import Thread
 
-from distbelief.utils.serialization import ravel_model_params, ravel_sparse_gradient
+from distbelief.utils.serialization import ravel_model_params
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -127,13 +127,14 @@ class GradientMessageListener(Thread):
             while os.stat(self.size_filename).st_mtime == self.cached_stamp or os.stat(self.size_filename).st_mtime - self.cached_stamp < 0.01:
                 time.sleep(0.01)
             # print(self.cached_stamp, os.stat(self.size_filename).st_mtime)
-            time.sleep(0.05)
+            time.sleep(0.01)
             self.cached_stamp = os.stat(self.size_filename).st_mtime
             with open(self.size_filename, 'r') as f:
                 try:
                     size = int(float(f.read().strip()))
                     if dist.get_rank() == 0 :
-                        print('%s RECEIVING MESSAGE %dto%d.size:%d, changed time : %s' % (str(time.time()), self.source, dist.get_rank(), size,str(self.cached_stamp)))
+                        print('RECEIVING MESSAGE %dto%d.size:%d, changed time : %s' % (
+                        self.source, dist.get_rank(), size, str(self.cached_stamp)))
                     self.m_parameter = torch.zeros(size + 3)
                 except Exception as e:
                     print(f.read())
@@ -153,8 +154,9 @@ def send_message(message_code, payload, dst=0, gradient_version=None):
     m_parameter = torch.Tensor([dist.get_rank(), message_code.value, gradient_version])
     # print(m_parameter.size(), payload.size())
     m_parameter = torch.cat((m_parameter, payload))
-    # print('%s SENDING MESSAGE %s gradient_version %d, %dto%d.size:%d' % (
-    # str(time.time()), message_code, gradient_version, dist.get_rank(), dst, payload.numel()))
+    if dist.get_rank() >= 0:
+        print('%s SENDING MESSAGE %s gradient_version %d, %dto%d.size:%d' % (
+            str(time.time()), message_code, gradient_version, dist.get_rank(), dst, payload.numel()))
     size = str(payload.numel())
     with open('%dto%d.size' % (dist.get_rank(), dst), 'w') as f:
         f.write(size)
