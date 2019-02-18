@@ -11,6 +11,7 @@ from distbelief.utils.serialization import ravel_model_params
 
 _LOGGER = logging.getLogger(__name__)
 
+isCUDA = 0
 
 class MessageCode(Enum):
     """Different types of messages between client and server that we support go here."""
@@ -81,7 +82,7 @@ class GradientMessageListener(Thread):
         self.model = model
         self.source = source
         _LOGGER.info("Setting m_parameter")
-        self.m_parameter = torch.zeros(ravel_model_params(model).numel() + 3)
+        self.m_parameter = torch.zeros(ravel_model_params(model, cuda=True).numel() + 3)
         self.cached_stamp = 0
         self.size_filename = None
         super(GradientMessageListener, self).__init__()
@@ -127,7 +128,7 @@ class GradientMessageListener(Thread):
             while os.stat(self.size_filename).st_mtime == self.cached_stamp or os.stat(self.size_filename).st_mtime - self.cached_stamp < 0.01:
                 time.sleep(0.01)
             # print(self.cached_stamp, os.stat(self.size_filename).st_mtime)
-            time.sleep(0.01)
+            time.sleep(0.03)
             self.cached_stamp = os.stat(self.size_filename).st_mtime
             with open(self.size_filename, 'r') as f:
                 try:
@@ -140,6 +141,8 @@ class GradientMessageListener(Thread):
                     print(f.read())
                     raise (e)
             sender = dist.recv(tensor=self.m_parameter, src=self.source)
+            if dist.get_rank() >= 0:
+                self.m_parameter = self.m_parameter.cuda()
             self.receive(int(self.m_parameter[0].item()),
                          GSMessageCode(self.m_parameter[1].item()),
                          int(self.m_parameter[2].item()),
@@ -153,8 +156,10 @@ def send_message(message_code, payload, dst=0, gradient_version=None):
     _LOGGER.info("SENDING MESSAGE: {} RANK: {}".format(message_code, dist.get_rank()))
     m_parameter = torch.Tensor([dist.get_rank(), message_code.value, gradient_version])
     # print(m_parameter.size(), payload.size())
+    if payload.is_cuda:
+        payload = payload.cpu()
     m_parameter = torch.cat((m_parameter, payload))
-    if dist.get_rank() >= 0:
+    if dist.get_rank() == 0:
         print('%s SENDING MESSAGE %s gradient_version %d, %dto%d.size:%d' % (
             str(time.time()), message_code, gradient_version, dist.get_rank(), dst, payload.numel()))
     size = str(payload.numel())

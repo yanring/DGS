@@ -10,7 +10,8 @@ import torch.optim
 
 from distbelief.utils.messaging import MessageCode, MessageListener, send_message, GSMessageCode, \
     GradientMessageListener
-from distbelief.utils.serialization import ravel_model_params, unravel_sparse_gradient
+from distbelief.utils.serialization import ravel_model_params, unravel_sparse_gradient, unravel_model_grad, \
+    ravel_sparse_gradient
 
 _LOGGER = logging.getLogger(__name__)
 cond = threading.Condition()
@@ -50,8 +51,8 @@ class GradientWarehouse:
         self.max_version = 0
         self.worker_count = 0
         self.worker_num = worker_num
-        self.global_model = ravel_model_params(model)
-        self.synced_model = ravel_model_params(model)
+        self.global_model = ravel_model_params(model, cuda=True)
+        self.synced_model = ravel_model_params(model, cuda=True)
         self.synced_version = 0
         self.un_synced_worker = {}
 
@@ -88,7 +89,8 @@ class GradientServer(GradientMessageListener):
         self.gradient_warehouse = gradient_warehouse
         # self.source = rank
         super(GradientServer, self).__init__(model, source=rank)
-        self.model = torch.zeros(ravel_model_params(model).numel())
+        self.model = torch.zeros(ravel_model_params(model).numel()).cuda()
+        self.net = model
         self.gradient_warehouse.model = self.model
         if rank == 1:
             for i in range(1, self.gradient_warehouse.worker_num):
@@ -134,13 +136,21 @@ class GradientServer(GradientMessageListener):
             #     self.sync_worker_model(sender, new_version)
             #     self.un_synced_worker.remove(sender)
             else:
-                # print('synced_model:', self.gradient_warehouse.synced_model)
-                # print('updated_model:', self.gradient_warehouse.synced_model.add(agg_gradient))
-                # sparse_agg_gradient = ravel_sparse_gradient(agg_gradient)
+                for p in self.net.parameters():
+                    if p.grad is not None:
+                        p.grad.detach_()
+                        p.grad.zero_()
+                    else:
+                        p.grad = p.data.clone()
+                        p.grad.zero_()
+                unravel_model_grad(self.net, agg_gradient)
+                # mp_gradient_filter(self.net)
+                raveled_gradients = ravel_model_params(self.net, grads=True, cuda=True)
+                sparse_agg_gradient = ravel_sparse_gradient(raveled_gradients)
                 # send_message(GSMessageCode.SparseGradientUpdate, sparse_agg_gradient,
                 #              dst=sender,
                 #              gradient_version=new_version)
-                send_message(GSMessageCode.GradientUpdate, agg_gradient,
+                send_message(GSMessageCode.GradientUpdate, raveled_gradients,
                              dst=sender,
                              gradient_version=new_version)
 

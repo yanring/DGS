@@ -1,11 +1,12 @@
 import sys
 
 import os
+
 WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname('main.py')))
 sys.path.append(WORKPATH)
-from distbelief.utils.serialization import ravel_sparse_gradient, unravel_sparse_gradient
+from distbelief.utils import messaging
 
-
+from distbelief.utils.serialization import mp_gradient_filter
 
 import argparse
 import torch
@@ -57,20 +58,23 @@ def main(args):
 
     trainloader, testloader = get_dataset(args, transform)
     net = AlexNet()
+    # net = ResNet50()
+    if args.cuda:
+        net = net.cuda()
+    # net.share_memory()
     # ResNet()
 
     if args.no_distributed:
-        optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.0)
+        optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0)
     else:
         print('distributed model')
         optimizer = GradientSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
         # optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=1, verbose=True, min_lr=1e-5, cooldown=1)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=1, verbose=True, min_lr=1e-5, cooldown=1,
+                                                     factor=0.25)
 
     # train
     net.train()
-    if args.cuda:
-        net = net.cuda()
 
     for epoch in range(args.epochs):  # loop over the dataset multiple times
         print("Training for epoch {}".format(epoch))
@@ -84,16 +88,17 @@ def main(args):
                 inputs, labels = inputs.cuda(), labels.cuda()
 
             # zero the parameter gradients
-            optimizer.zero_grad()
+            # optimizer.zero_grad()
             # forward + backward + optimize
             outputs = net(inputs)
             loss = F.cross_entropy(outputs, labels)
             loss.backward()
             # _, a = ravel_sparse_gradient(net)
             # b = unravel_sparse_gradient(a)
-
+            paralist = mp_gradient_filter(net)
             optimizer.step()
-
+            for para1, para2 in zip(paralist, net.parameters()):
+                para2.grad.data = para1
             _, predicted = torch.max(outputs, 1)
             accuracy = accuracy_score(predicted, labels)
 
@@ -164,6 +169,8 @@ def evaluate(net, testloader, args, verbose=False):
 def init_server(args):
     os.system('rm *.size')
     model = AlexNet()
+    if messaging.isCUDA:
+        model.cuda()
     gradient_warehouse = GradientWarehouse(worker_num=args.world_size, model=model)
     threads_num = dist.get_world_size() - 1
     threads = []
@@ -184,7 +191,7 @@ if __name__ == "__main__":
     parser.add_argument('--test-batch-size', type=int, default=10000, metavar='N',
                         help='input batch size for testing (default: 10000)')
     parser.add_argument('--epochs', type=int, default=20, metavar='N', help='number of epochs to train (default: 20)')
-    parser.add_argument('--lr', type=float, default=0.05, metavar='LR', help='learning rate (default: 0.1)')
+    parser.add_argument('--lr', type=float, default=0.1, metavar='LR', help='learning rate (default: 0.1)')
     parser.add_argument('--num-pull', type=int, default=5, metavar='N', help='how often to pull params (default: 5)')
     parser.add_argument('--num-push', type=int, default=5, metavar='N', help='how often to push grads (default: 5)')
     parser.add_argument('--cuda', action='store_true', default=False, help='use CUDA for training')
@@ -216,6 +223,8 @@ if __name__ == "__main__":
                 print(e)
         dist.init_process_group('tcp', init_method='file://%s/sharedfile' % WORKPATH, group_name='mygroup',
                                 world_size=args.world_size, rank=args.rank)
+        if args.cuda:
+            messaging.isCUDA = 1
         if args.server:
             init_server(args)
     main(args)

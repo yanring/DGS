@@ -1,4 +1,7 @@
+import sys
+
 import logging
+import os
 import threading
 import torch
 import torch.distributed as dist
@@ -7,7 +10,11 @@ from torch.optim.optimizer import Optimizer, required
 
 from distbelief.utils.messaging import send_message, GSMessageCode, GradientMessageListener
 from distbelief.utils.serialization import ravel_model_params, update_model_params, unravel_model_params, \
-    ravel_sparse_gradient, unravel_sparse_gradient, mp_gradient_filter
+    ravel_sparse_gradient, unravel_sparse_gradient
+
+WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname('main.py')))
+sys.path.append(WORKPATH)
+from distbelief.utils import messaging
 
 _LOGGER = logging.getLogger(__name__)
 lock = threading.Lock()
@@ -22,6 +29,8 @@ class GradientListener(GradientMessageListener):
         self.queue = queue
         self.version = 0
         self.tmp_add_gradient = torch.zeros(ravel_model_params(model).numel())
+        if messaging.isCUDA:
+            self.tmp_add_gradient = self.tmp_add_gradient.cuda()
         self.flag = False
 
     def receive(self, sender, message_code, gradient_version, parameter, ):
@@ -80,7 +89,7 @@ class GradientSGD(Optimizer):
             raise ValueError("Invalid learning rate: {}".format(lr))
         print('I am node rank:%d' % dist.get_rank())
         defaults = dict(lr=lr, )
-        self.accumulated_gradients = torch.zeros(ravel_model_params(model).size())
+        self.accumulated_gradients = torch.zeros(ravel_model_params(model, cuda=True).size())
         self.model = model
         # this sets the initial model parameters
         # send_message(MessageCode.ParameterUpdate, ravel_model_params(self.model))
@@ -116,8 +125,8 @@ class GradientSGD(Optimizer):
 
         # keep track of accumulated gradients so that we can send 
         # gradients = ravel_model_params(self.model, grads=True)
-        mp_gradient_filter(self.model)
-        raveled_gradients = ravel_model_params(self.model, grads=True).mul_(lr)
+        # mp_gradient_filter(self.model)
+        raveled_gradients = ravel_model_params(self.model, grads=True, cuda=True).mul_(lr)
         sparse_gradient = ravel_sparse_gradient(raveled_gradients)
         send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst=0,
                      gradient_version=self.listener.version + 1)

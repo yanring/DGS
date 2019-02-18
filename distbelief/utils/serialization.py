@@ -2,12 +2,17 @@ import time
 
 import torch
 
+from distbelief.utils import messaging
 
-def ravel_model_params(model, grads=False):
+
+def ravel_model_params(model, grads=False, cuda=False):
     """
     Squash model parameters or gradients into a single tensor.
     """
-    m_parameter = torch.Tensor([0])
+    if cuda or messaging.isCUDA:
+        m_parameter = torch.Tensor([0]).cuda()
+    else:
+        m_parameter = torch.Tensor([0])
     for parameter in list(model.parameters()):
         if grads:
             m_parameter = torch.cat((m_parameter, parameter.grad.view(-1)))
@@ -44,43 +49,75 @@ def update_model_params(model, parameter_update, lr):
         current_index += numel
 
 
-# def gradient_filter(param):
-#     rate = 0.01
-#     grad = param.grad.data
-#     topn = torch.kthvalue(abs(grad.view(1, -1)), int(grad.nelement() * (1 - rate)))
-#     threshold = float(topn[0])
-#     param.grad.data[abs(param.grad.data) < threshold] = 0
-#     # print(abs(param.grad.data).sum())
-#     return threshold
+def gradient_filter(param):
+    rate = 0.01
+    grad = param
+    # temp = param.grad.data
+
+    # param = param.grad.data
+    topn = torch.kthvalue(abs(grad.view(1, -1)), int(grad.nelement() * (1 - rate)))
+    threshold = float(topn[0])
+    # topn = torch.topk(abs(temp.view(1, -1)), int(temp.nelement() * rate) if int(temp.nelement() * rate) != 0 else 1)
+    # threshold = float(topn[0][0][-1])
+    param[abs(param) < threshold] = 0
+    # print(abs(param.grad.data).sum())
+    # print(threshold)
+    return threshold
+
+
+#
+# def mp_gradient_filter(net):
+#     import torch.multiprocessing as mp
+#     # TODO 用numpy做多进程
+#     start = time.time()
+#     # res = list(map(gradient_filter, net.parameters()))
+#     pool = mp.Pool(processes=4)
+#     a = [i.grad for i in net.parameters()]
+#     pool.map(gradient_filter, a)
+#     # # for i in net.parameters():
+#     #     # pool.apply(gradient_filter,(i.grad.data,))
+#     pool.close()
+#     pool.join()
+#     # print('ddddddddddddddddddddone')
+#     # for param,threshold in zip(net.parameters(),res):
+#     #     print(abs(param.grad.data).sum())
+#     # param.grad.data = torch.where(param<threshold,param,torch.full_like(param, 0))
+#     # param.grad.data[abs(param.grad.data) < threshold] = 0
+#     end = time.time()
+#     # print('time:',end - start)
 
 
 #
 def mp_gradient_filter(net):
-    # TODO 用numpy做多进程
-    # start = time.time()
-    res = list(map(gradient_filter, net.parameters()))
-    # for param,threshold in zip(net.parameters(),res):
-    #     print(abs(param.grad.data).sum())
-    # param.grad.data = torch.where(param<threshold,param,torch.full_like(param, 0))
-    # param.grad.data[abs(param.grad.data) < threshold] = 0
-    # end = time.time()
-    # print(end - start)
-
-
-
-def gradient_filter(net):
     start = time.time()
-    rate = 0.5
+    rate = 0.01
+    paralist = []
     # threshold = 0.0001
     # paralist = []
     for param in net.parameters():
         temp = param.grad.data.clone()
         topn = torch.topk(abs(temp.view(1, -1)), int(temp.nelement() * rate) if int(temp.nelement() * rate) != 0 else 1)
         threshold = float(topn[0][0][-1])
-        # temp[abs(temp) >= threshold] = 0
+        temp[abs(temp) >= threshold] = 0
         param.grad.data[abs(param.grad.data) < threshold] = 0
+        paralist.append(temp)
     end = time.time()
-    print(end - start)
+    return paralist
+    # print(end - start)
+
+
+def unravel_model_grad(model, parameter_update):
+    """
+    Assigns parameter_update params to model.parameters.
+    This is done by iterating through model.parameters() and assigning the relevant params in parameter_update.
+    NOTE: this function manipulates model.parameters.
+    """
+    current_index = 0  # keep track of where to read from parameter_update
+    for parameter in model.parameters():
+        numel = parameter.grad.data.numel()
+        size = parameter.grad.data.size()
+        parameter.grad.data.copy_(parameter_update[current_index:current_index + numel].view(size))
+        current_index += numel
 
 
 def ravel_sparse_gradient(temp_param):
