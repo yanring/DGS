@@ -2,6 +2,7 @@
 """
 Parameter server for distbelief
 """
+import time
 
 import logging
 import threading
@@ -10,8 +11,8 @@ import torch.optim
 
 from distbelief.utils.messaging import MessageCode, MessageListener, send_message, GSMessageCode, \
     GradientMessageListener
-from distbelief.utils.serialization import ravel_model_params, unravel_sparse_gradient, unravel_model_grad, \
-    ravel_sparse_gradient, mp_gradient_filter
+from distbelief.utils.serialization import ravel_model_params, unravel_sparse_gradient, ravel_sparse_gradient, \
+    server_gradient_filter
 
 _LOGGER = logging.getLogger(__name__)
 cond = threading.Condition()
@@ -110,19 +111,20 @@ class GradientServer(GradientMessageListener):
 
         if message_code == GSMessageCode.GradientUpdate:
             agg_gradient, new_version = self.gradient_warehouse.update(sender, gradient_version, parameter)
-
-            if sender == 1 and self.gradient_warehouse.max_version % 50 is 1 and self.gradient_warehouse.max_version > 10:
-                self.gradient_warehouse.sync_model()
-                self.gradient_warehouse.un_synced_worker = set(range(1, self.gradient_warehouse.worker_num))
-            if sender in self.gradient_warehouse.un_synced_worker:
-                self.sync_worker_model(sender, new_version)
-                self.gradient_warehouse.un_synced_worker.remove(sender)
-            else:
-                # print('synced_model:', self.gradient_warehouse.synced_model)
-                # print('updated_model:', self.gradient_warehouse.synced_model.add(agg_gradient))
-                send_message(GSMessageCode.GradientUpdate, agg_gradient,
-                             dst=sender,
-                             gradient_version=new_version)
+            send_message(GSMessageCode.ModelUpdate, self.gradient_warehouse.global_model, dst=sender,
+                         gradient_version=new_version)
+            # if sender == 1 and self.gradient_warehouse.max_version % 50 is 1 and self.gradient_warehouse.max_version > 10:
+            #     self.gradient_warehouse.sync_model()
+            #     self.gradient_warehouse.un_synced_worker = set(range(1, self.gradient_warehouse.worker_num))
+            # if sender in self.gradient_warehouse.un_synced_worker:
+            #     self.sync_worker_model(sender, new_version)
+            #     self.gradient_warehouse.un_synced_worker.remove(sender)
+            # else:
+            #     # print('synced_model:', self.gradient_warehouse.synced_model)
+            #     # print('updated_model:', self.gradient_warehouse.synced_model.add(agg_gradient))
+            #     send_message(GSMessageCode.GradientUpdate, agg_gradient,
+            #                  dst=sender,
+            #                  gradient_version=new_version)
         elif message_code == GSMessageCode.SparseGradientUpdate:
             parameter = unravel_sparse_gradient(parameter)
             agg_gradient, new_version = self.gradient_warehouse.update(sender, gradient_version, parameter)
@@ -141,18 +143,13 @@ class GradientServer(GradientMessageListener):
             #     self.sync_worker_model(sender, new_version)
             #     self.un_synced_worker.remove(sender)
             else:
+                start = time.time()
                 send_grad = agg_gradient.add(-1, self.acc_send_grad)
-                for p in self.net.parameters():
-                    if p.grad is not None:
-                        p.grad.detach_()
-                        p.grad.zero_()
-                    else:
-                        p.grad = p.data.clone()
-                        p.grad.zero_()
-                unravel_model_grad(self.net, send_grad)
-                mp_gradient_filter(self.net, rate=0.04)
-                raveled_gradients = ravel_model_params(self.net, grads=True, cuda=True)
-                sparse_agg_gradient = ravel_sparse_gradient(raveled_gradients)
+                server_gradient_filter(self.net, send_grad, rate=0.04)
+                # unravel_model_grad(self.net, send_grad)
+                # worker_gradient_filter(self.net, rate=0.04)
+                # raveled_gradients = ravel_model_params(self.net, grads=True, cuda=True)
+                sparse_agg_gradient = ravel_sparse_gradient(send_grad)
                 send_message(GSMessageCode.SparseGradientUpdate, sparse_agg_gradient,
                              dst=sender,
                              gradient_version=new_version)
@@ -161,6 +158,15 @@ class GradientServer(GradientMessageListener):
                 #              gradient_version=new_version)
                 # print('acc %f, send %f'%(self.acc_send_grad.sum(),send_grad.sum()))
                 self.acc_send_grad.add_(send_grad)
+                for p in self.net.parameters():
+                    if p.grad is not None:
+                        p.grad.detach_()
+                        p.grad.zero_()
+                    else:
+                        p.grad = p.data.clone()
+                        p.grad.zero_()
+                end = time.time()
+                print(end - start)
 
 
         else:

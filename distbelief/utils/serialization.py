@@ -88,7 +88,7 @@ def gradient_filter(param):
 
 
 #
-def mp_gradient_filter(net, rate=0.01):
+def worker_gradient_filter(net, rate=0.01):
     start = time.time()
     # rate = 0.01
     paralist = []
@@ -104,6 +104,18 @@ def mp_gradient_filter(net, rate=0.01):
     end = time.time()
     return paralist
     # print(end - start)
+
+
+def server_gradient_filter(net, gradients, rate=0.01):
+    start = time.time()
+    current_index = 0
+    for param in net.parameters():
+        numel = param.data.numel()
+        temp = gradients[current_index:current_index + numel]
+        topn = torch.topk(abs(temp), int(temp.nelement() * rate) if int(temp.nelement() * rate) != 0 else 1)
+        threshold = float(topn[0][-1])
+        temp[abs(temp) < threshold] = 0
+    end = time.time()
 
 
 def unravel_model_grad(model, parameter_update):
@@ -138,7 +150,7 @@ def ravel_sparse_gradient(temp_param):
 
 
 def unravel_sparse_gradient(sparse_gradient):
-    # len is 2472266
+    # len is 2472266 11173962
     split = int(len(sparse_gradient) / 2)
     i = sparse_gradient[:split]
     v = sparse_gradient[split:]

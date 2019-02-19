@@ -6,7 +6,7 @@ WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname('main.py')))
 sys.path.append(WORKPATH)
 from distbelief.utils import messaging
 
-from distbelief.utils.serialization import mp_gradient_filter
+from distbelief.utils.serialization import worker_gradient_filter
 
 import argparse
 import torch
@@ -58,7 +58,7 @@ def main(args):
 
     trainloader, testloader = get_dataset(args, transform)
     net = AlexNet()
-    # net = ResNet50()
+    # net = ResNet18()
     if args.cuda:
         net = net.cuda()
     # net.share_memory()
@@ -93,7 +93,7 @@ def main(args):
             outputs = net(inputs)
             loss = F.cross_entropy(outputs, labels)
             loss.backward()
-            paralist = mp_gradient_filter(net)
+            paralist = worker_gradient_filter(net)
             optimizer.step()
             for para1, para2 in zip(paralist, net.parameters()):
                 para2.grad.data = para1
@@ -167,6 +167,7 @@ def evaluate(net, testloader, args, verbose=False):
 def init_server(args):
     os.system('rm *.size')
     model = AlexNet()
+    # model = ResNet18()
     if messaging.isCUDA:
         model.cuda()
     gradient_warehouse = GradientWarehouse(worker_num=args.world_size, model=model)
