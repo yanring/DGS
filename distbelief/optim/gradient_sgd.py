@@ -5,6 +5,7 @@ import os
 import threading
 import torch
 import torch.distributed as dist
+from datetime import datetime
 from queue import Queue
 from torch.optim.optimizer import Optimizer, required
 
@@ -38,21 +39,21 @@ class GradientListener(GradientMessageListener):
         _LOGGER.info("Processing message: {}, version: {}, lr: {}".format(message_code.name, gradient_version, self.lr))
         # print("Processing message: {}, version: {}, lr: {}".format(message_code.name, gradient_version, self.lr))
         if message_code == GSMessageCode.GradientUpdate:
-            update_model_params(self.model, self.tmp_add_gradient, 1)
+            # update_model_params(self.model, self.tmp_add_gradient, 1)
             # print('synced model :', ravel_model_params(self.model))
             update_model_params(self.model, parameter, -1)
             # print('updated model :', ravel_model_params(self.model))
-            self.tmp_add_gradient = parameter.clone()
+            # self.tmp_add_gradient = parameter.clone()
             self.version = gradient_version
             self.queue.put(gradient_version)
         elif message_code == GSMessageCode.SparseGradientUpdate:
             parameter = unravel_sparse_gradient(parameter)
             # same as the GradientUpdate
-            update_model_params(self.model, self.tmp_add_gradient, 1)
+            # update_model_params(self.model, self.tmp_add_gradient, 1)
             # print('synced model :', ravel_model_params(self.model))
             update_model_params(self.model, parameter, -1)
             # print('updated model :', ravel_model_params(self.model))
-            self.tmp_add_gradient = parameter.clone()
+            # self.tmp_add_gradient = parameter.clone()
             self.version = gradient_version
             self.queue.put(gradient_version)
         elif message_code == GSMessageCode.ModelRequest:
@@ -63,7 +64,7 @@ class GradientListener(GradientMessageListener):
             send_message(GSMessageCode.ModelUpdate, model, dst=0, gradient_version=0)
             print('send model to server')
         elif message_code == GSMessageCode.ModelUpdate:
-            print('version:', gradient_version, ' synced model :', parameter)
+            print('version:', gradient_version, ' ', datetime.now(), ' synced model :', parameter)
             unravel_model_params(self.model, parameter.clone())
             self.tmp_add_gradient.zero_()
             self.version = gradient_version

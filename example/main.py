@@ -93,8 +93,6 @@ def main(args):
             outputs = net(inputs)
             loss = F.cross_entropy(outputs, labels)
             loss.backward()
-            # _, a = ravel_sparse_gradient(net)
-            # b = unravel_sparse_gradient(a)
             paralist = mp_gradient_filter(net)
             optimizer.step()
             for para1, para2 in zip(paralist, net.parameters()):
@@ -108,7 +106,7 @@ def main(args):
                 'training_loss': loss.item(),
                 'training_accuracy': accuracy,
             }
-            if i % 20 == 0:
+            if i % 1 == 0:
                 print("Timestamp: {timestamp} | "
                       "Iteration: {iteration:6} | "
                       "Loss: {training_loss:6.4f} | "

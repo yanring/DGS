@@ -88,9 +88,9 @@ def gradient_filter(param):
 
 
 #
-def mp_gradient_filter(net):
+def mp_gradient_filter(net, rate=0.01):
     start = time.time()
-    rate = 0.01
+    # rate = 0.01
     paralist = []
     # threshold = 0.0001
     # paralist = []

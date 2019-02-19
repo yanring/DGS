@@ -128,18 +128,23 @@ class GradientMessageListener(Thread):
             while os.stat(self.size_filename).st_mtime == self.cached_stamp or os.stat(self.size_filename).st_mtime - self.cached_stamp < 0.01:
                 time.sleep(0.01)
             # print(self.cached_stamp, os.stat(self.size_filename).st_mtime)
-            time.sleep(0.03)
+            time.sleep(0.04)
             self.cached_stamp = os.stat(self.size_filename).st_mtime
             with open(self.size_filename, 'r') as f:
                 try:
                     size = int(float(f.read().strip()))
-                    if dist.get_rank() == 0 :
+                    if dist.get_rank() == 0:
                         print('RECEIVING MESSAGE %dto%d.size:%d, changed time : %s' % (
                         self.source, dist.get_rank(), size, str(self.cached_stamp)))
                     self.m_parameter = torch.zeros(size + 3)
                 except Exception as e:
-                    print(f.read())
-                    raise (e)
+                    time.sleep(0.05)
+                    size = int(float(f.read().strip()))
+                    if dist.get_rank() == 0:
+                        print('RECEIVING MESSAGE %dto%d.size:%d, changed time : %s' % (
+                            self.source, dist.get_rank(), size, str(self.cached_stamp)))
+                    self.m_parameter = torch.zeros(size + 3)
+                    # raise (e)
             sender = dist.recv(tensor=self.m_parameter, src=self.source)
             if dist.get_rank() >= 0:
                 self.m_parameter = self.m_parameter.cuda()
