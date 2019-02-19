@@ -126,7 +126,7 @@ class GradientMessageListener(Thread):
             _LOGGER.info("Polling for sparse message...")
             # time.sleep(0.1)
             while os.stat(self.size_filename).st_mtime == self.cached_stamp or os.stat(
-                    self.size_filename).st_mtime - self.cached_stamp < 0.1:
+                    self.size_filename).st_mtime - self.cached_stamp < 0.01:
                 time.sleep(0.005)
             # print(self.cached_stamp, os.stat(self.size_filename).st_mtime)
             time.sleep(0.001)
