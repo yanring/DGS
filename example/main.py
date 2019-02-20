@@ -89,7 +89,7 @@ def main(args):
                 inputs, labels = inputs.cuda(), labels.cuda()
 
             # zero the parameter gradients
-            # optimizer.zero_grad()
+            optimizer.zero_grad()
             # forward + backward + optimize
             outputs = net(inputs)
             loss = F.cross_entropy(outputs, labels)
@@ -221,6 +221,11 @@ if __name__ == "__main__":
                 print('%s/sharedfile chmod success' % WORKPATH)
             except Exception as e:
                 print(e)
+        if args.server:
+            import glob
+
+            for infile in glob.glob(os.path.join(WORKPATH, '*.size')):
+                os.remove(infile)
         dist.init_process_group('tcp', init_method='file://%s/sharedfile' % WORKPATH, group_name='mygroup',
                                 world_size=args.world_size, rank=args.rank)
         if args.cuda:

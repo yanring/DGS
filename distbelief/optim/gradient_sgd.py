@@ -1,9 +1,9 @@
 import sys
+import time
 
 import logging
 import os
 import threading
-import torch
 import torch.distributed as dist
 from datetime import datetime
 from queue import Queue
@@ -28,7 +28,7 @@ class GradientListener(GradientMessageListener):
         self.lr = 0.05
         self.queue = queue
         self.version = 0
-        self.filter_gradient = ravel_model_params(model)
+        self.flag = False
 
     def receive(self, sender, message_code, gradient_version, parameter, ):
         """receive parameter updates from the server and reflect them into the client's model."""
@@ -55,7 +55,7 @@ class GradientListener(GradientMessageListener):
             print('sync model!')
             self.flag = True
             # TODO change back
-            if self.version > 0:
+            if self.version > 1:
                 self.queue.put(gradient_version)
             # lock.release()
 
@@ -75,8 +75,9 @@ class GradientSGD(Optimizer):
             raise ValueError("Invalid learning rate: {}".format(lr))
         print('I am node rank:%d' % dist.get_rank())
         defaults = dict(lr=lr, )
-        self.accumulated_gradients = torch.zeros(ravel_model_params(model, cuda=True).size())
+        # self.accumulated_gradients = torch.zeros(ravel_model_params(model, cuda=True).size())
         self.model = model
+        self.filter_gradient = ravel_model_params(model)
         # this sets the initial model parameters
         # send_message(MessageCode.ParameterUpdate, ravel_model_params(self.model))
         self.idx = 0
@@ -99,6 +100,7 @@ class GradientSGD(Optimizer):
             loss = closure()
 
         if not self.listener.flag:
+            time.sleep(1)
             return loss
         # increase version No.
         # self.version += 1
@@ -109,13 +111,13 @@ class GradientSGD(Optimizer):
         lr = self.param_groups[0]['lr']
         self.listener.lr = lr
 
-        # keep track of accumulated gradients so that we can send 
-        # gradients = ravel_model_params(self.model, grads=True)
-        # mp_gradient_filter(self.model)
+        # keep track of accumulated gradients so that we can send
+        # ASYNC
         # raveled_gradients = ravel_model_params(self.model, grads=True, cuda=True).mul_(lr)
-        raveled_gradients = worker_gradient_executor(self.model, rate=0.01, lr=lr)
         # send_message(GSMessageCode.GradientUpdate, raveled_gradients, dst=0,
         #              gradient_version=self.listener.version + 1)
+        # COMPRESSION
+        raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, rate=0.01, lr=lr)
         sparse_gradient = ravel_sparse_gradient(raveled_gradients)
         send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst=0,
                      gradient_version=self.listener.version + 1)

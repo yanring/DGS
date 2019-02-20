@@ -1,8 +1,12 @@
+import sys
 import time
 
+import os
 import torch
 
-from distbelief.utils import messaging
+WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname('main.py')))
+sys.path.append(WORKPATH)
+# from utils import messaging
 
 current_model_size = None
 
@@ -11,7 +15,7 @@ def ravel_model_params(model, grads=False, cuda=False):
     """
     Squash model parameters or gradients into a single tensor.
     """
-    if cuda or messaging.isCUDA:
+    if 1:
         m_parameter = torch.Tensor([0]).cuda()
     else:
         m_parameter = torch.Tensor([0])
@@ -70,7 +74,6 @@ def gradient_filter(param):
 #
 # def mp_gradient_filter(net):
 #     import torch.multiprocessing as mp
-#     # TODO 用numpy做多进程
 #     start = time.time()
 #     # res = list(map(gradient_filter, net.parameters()))
 #     pool = mp.Pool(processes=4)

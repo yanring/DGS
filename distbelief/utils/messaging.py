@@ -14,6 +14,16 @@ _LOGGER = logging.getLogger(__name__)
 isCUDA = 0
 
 
+def tail(filename):
+    with open(filename, 'r') as f:
+        while True:
+            line = f.readline()
+            if not line:
+                time.sleep(0.01)
+                continue
+            yield int(line)
+
+
 class MessageCode(Enum):
     """Different types of messages between client and server that we support go here."""
     ParameterRequest = 0
@@ -131,35 +141,51 @@ class GradientMessageListener(Thread):
             time.sleep(0.5)
         while self.running:
             _LOGGER.info("Polling for sparse message...")
-            while os.stat(self.size_filename).st_mtime == self.cached_stamp or os.stat(
-                    self.size_filename).st_mtime - self.cached_stamp < 0.01:
-                time.sleep(0.005)
-            time.sleep(0.01)
-            with open(self.size_filename, 'r') as f:
+            for size in tail(self.size_filename):
+                self.m_parameter = torch.zeros(size + 3)
                 try:
-                    size = int(float(f.read().strip()))
-                    if dist.get_rank() == 0:
-                        print('RECEIVING MESSAGE %dto%d.size:%d, changed time : %s' % (
-                            self.source, dist.get_rank(), size, str(self.cached_stamp)))
-                except Exception as _:
-                    time.sleep(0.05)
-                    size = int(float(f.read().strip()))
-                    if dist.get_rank() == 0:
-                        print('RECEIVING MESSAGE %dto%d.size:%d, changed time : %s' % (
-                            self.source, dist.get_rank(), size, str(self.cached_stamp)))
-                    self.m_parameter = torch.zeros(size + 3)
-            try:
-                sender = dist.recv(tensor=self.m_parameter, src=self.source)
-            except Exception as e:
-                print('Exception :', e)
-                continue
-            self.cached_stamp = os.stat(self.size_filename).st_mtime
-            if dist.get_rank() >= 0:
-                self.m_parameter = self.m_parameter.cuda()
-            self.receive(int(self.m_parameter[0].item()),
-                         GSMessageCode(self.m_parameter[1].item()),
-                         int(self.m_parameter[2].item()),
-                         self.m_parameter[3:])
+                    sender = dist.recv(tensor=self.m_parameter, src=self.source)
+                    self.cached_stamp = os.stat(self.size_filename).st_mtime
+                    # print('recv file changed:', self.cached_stamp)
+                except Exception as e:
+                    print('Exception :', e)
+                    time.sleep(0.5)
+                    continue
+                if dist.get_rank() == 0:
+                    self.m_parameter = self.m_parameter.cuda()
+                self.receive(int(self.m_parameter[0].item()),
+                             GSMessageCode(self.m_parameter[1].item()),
+                             int(self.m_parameter[2].item()),
+                             self.m_parameter[3:])
+
+            # with open(self.size_filename, 'r') as f:
+            #     try:
+            #         size = int(float(f.read().strip()))
+            #         if dist.get_rank() >= 0:
+            #             print('RECEIVING MESSAGE %dto%d.size:%d, changed time : %s' % (
+            #                 self.source, dist.get_rank(), size, str(self.cached_stamp)))
+            #     except Exception as e:
+            #         print(e)
+            #         time.sleep(0.5)
+            #         size = int(float(f.read().strip()))
+            #         if dist.get_rank() == 0:
+            #             print('RECEIVING MESSAGE %dto%d.size:%d, changed time : %s' % (
+            #                 self.source, dist.get_rank(), size, str(self.cached_stamp)))
+            # self.m_parameter = torch.zeros(size + 3)
+            # try:
+            #     sender = dist.recv(tensor=self.m_parameter, src=self.source)
+            #     self.cached_stamp = os.stat(self.size_filename).st_mtime
+            #     print('recv file changed:', self.cached_stamp)
+            # except Exception as e:
+            #     print('Exception :', e)
+            #     time.sleep(0.5)
+            #     continue
+            # if dist.get_rank() >= 0:
+            #     self.m_parameter = self.m_parameter.cuda()
+            # self.receive(int(self.m_parameter[0].item()),
+            #              GSMessageCode(self.m_parameter[1].item()),
+            #              int(self.m_parameter[2].item()),
+            #              self.m_parameter[3:])
 
 
 def send_message(message_code, payload, dst=0, gradient_version=None):
@@ -176,8 +202,9 @@ def send_message(message_code, payload, dst=0, gradient_version=None):
         print('%s SENDING MESSAGE %s gradient_version %d, %dto%d.size:%d' % (
             str(time.time()), message_code, gradient_version, dist.get_rank(), dst, payload.numel()))
     size = str(payload.numel())
-    with open('%dto%d.size' % (dist.get_rank(), dst), 'w') as f:
+    with open('%dto%d.size' % (dist.get_rank(), dst), 'a') as f:
         f.write(size)
+    # print('send file changed:', os.stat('%dto%d.size' % (dist.get_rank(), dst)).st_mtime )
     dist.isend(tensor=m_parameter, dst=dst)
 
 #

@@ -112,7 +112,7 @@ class GradientServer(GradientMessageListener):
         if message_code == GSMessageCode.GradientUpdate:
             agg_gradient, new_version = self.gradient_warehouse.update(sender, gradient_version, parameter)
             send_message(GSMessageCode.ModelUpdate, self.gradient_warehouse.global_model, dst=sender,
-                         gradient_version=new_version)
+                         gradient_version=gradient_version)
             # if sender == 1 and self.gradient_warehouse.max_version % 50 is 1 and self.gradient_warehouse.max_version > 10:
             #     self.gradient_warehouse.sync_model()
             #     self.gradient_warehouse.un_synced_worker = set(range(1, self.gradient_warehouse.worker_num))
@@ -128,7 +128,7 @@ class GradientServer(GradientMessageListener):
         elif message_code == GSMessageCode.SparseGradientUpdate:
             parameter = unravel_sparse_gradient(parameter)
             agg_gradient, new_version = self.gradient_warehouse.update(sender, gradient_version, parameter)
-            if sender == 1 and self.gradient_warehouse.max_version % 50 is 1 and self.gradient_warehouse.max_version > 20:
+            if sender == 1 and self.gradient_warehouse.max_version % 50 is 1 and gradient_version > 20:
                 self.gradient_warehouse.sync_model()
                 self.gradient_warehouse.un_synced_worker = set(range(1, self.gradient_warehouse.worker_num))
             if self.gradient_warehouse.max_version % 100 is 1 and self.gradient_warehouse.max_version > 50:
@@ -166,7 +166,7 @@ class GradientServer(GradientMessageListener):
                 #         p.grad = p.data.clone()
                 #         p.grad.zero_()
                 end = time.time()
-                print(end - start)
+                # print(end - start)
 
 
         else:
