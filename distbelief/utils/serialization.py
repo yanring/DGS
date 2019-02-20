@@ -4,6 +4,8 @@ import torch
 
 from distbelief.utils import messaging
 
+current_model_size = None
+
 
 def ravel_model_params(model, grads=False, cuda=False):
     """
@@ -87,7 +89,29 @@ def gradient_filter(param):
 #     # print('time:',end - start)
 
 
-#
+def worker_gradient_executor(net, payload, rate=0.01, lr=0.1):
+    '''
+    :param net: model
+    :param rate: compression rate
+    :return: gradients which lager than threshold
+    '''
+    start = time.time()
+    current_index = 0
+    m_parameter = payload
+    for param in net.parameters():
+        numel = param.data.numel()
+        m_parameter[current_index:current_index + numel] = param.grad.data.clone().view(-1)
+        temp = m_parameter[current_index:current_index + numel]
+        topn = torch.topk(abs(temp), int(temp.nelement() * rate) if int(temp.nelement() * rate) != 0 else 1)
+        threshold = float(topn[0][-1])
+        temp[abs(temp) <= threshold] = 0
+        param.grad.data[abs(param.grad.data) > threshold] = 0
+        current_index += numel
+        # paralist.append(temp)
+    end = time.time()
+    return m_parameter.mul_(lr)
+
+
 def worker_gradient_filter(net, rate=0.01):
     start = time.time()
     # rate = 0.01

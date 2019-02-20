@@ -4,9 +4,9 @@ import os
 
 WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname('main.py')))
 sys.path.append(WORKPATH)
-from distbelief.utils import messaging
+from distbelief.utils.messaging import ModelSize
 
-from distbelief.utils.serialization import worker_gradient_filter
+from distbelief.utils import messaging, serialization
 
 import argparse
 import torch
@@ -58,6 +58,7 @@ def main(args):
 
     trainloader, testloader = get_dataset(args, transform)
     net = AlexNet()
+    serialization.current_model_size = ModelSize.AlexNet
     # net = ResNet18()
     if args.cuda:
         net = net.cuda()
@@ -93,10 +94,10 @@ def main(args):
             outputs = net(inputs)
             loss = F.cross_entropy(outputs, labels)
             loss.backward()
-            paralist = worker_gradient_filter(net)
+            # paralist = worker_gradient_filter(net)
             optimizer.step()
-            for para1, para2 in zip(paralist, net.parameters()):
-                para2.grad.data = para1
+            # for para1, para2 in zip(paralist, net.parameters()):
+            #     para2.grad.data = para1
             _, predicted = torch.max(outputs, 1)
             accuracy = accuracy_score(predicted, labels)
 

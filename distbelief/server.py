@@ -158,13 +158,13 @@ class GradientServer(GradientMessageListener):
                 #              gradient_version=new_version)
                 # print('acc %f, send %f'%(self.acc_send_grad.sum(),send_grad.sum()))
                 self.acc_send_grad.add_(send_grad)
-                for p in self.net.parameters():
-                    if p.grad is not None:
-                        p.grad.detach_()
-                        p.grad.zero_()
-                    else:
-                        p.grad = p.data.clone()
-                        p.grad.zero_()
+                # for p in self.net.parameters():
+                #     if p.grad is not None:
+                #         p.grad.detach_()
+                #         p.grad.zero_()
+                #     else:
+                #         p.grad = p.data.clone()
+                #         p.grad.zero_()
                 end = time.time()
                 print(end - start)
 

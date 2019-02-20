@@ -13,6 +13,7 @@ _LOGGER = logging.getLogger(__name__)
 
 isCUDA = 0
 
+
 class MessageCode(Enum):
     """Different types of messages between client and server that we support go here."""
     ParameterRequest = 0
@@ -30,6 +31,12 @@ class GSMessageCode(Enum):
     ModelRequest = 4
     ModelUpdate = 5
     SparseGradientUpdate = 6
+
+
+class ModelSize(Enum):
+    """Different model size"""
+    AlexNet = 2472266
+    ResNet18 = 11173962
 
 
 class MessageListener(Thread):
@@ -124,30 +131,23 @@ class GradientMessageListener(Thread):
             time.sleep(0.5)
         while self.running:
             _LOGGER.info("Polling for sparse message...")
-            # time.sleep(0.1)
             while os.stat(self.size_filename).st_mtime == self.cached_stamp or os.stat(
                     self.size_filename).st_mtime - self.cached_stamp < 0.01:
                 time.sleep(0.005)
-            # print(self.cached_stamp, os.stat(self.size_filename).st_mtime)
-            time.sleep(0.001)
-            # if time.time() - os.stat(self.size_filename).st_mtime < 0.04:
-            #     print('time lock triggered')
-            #     time.sleep(0.05)
+            time.sleep(0.01)
             with open(self.size_filename, 'r') as f:
                 try:
                     size = int(float(f.read().strip()))
                     if dist.get_rank() == 0:
                         print('RECEIVING MESSAGE %dto%d.size:%d, changed time : %s' % (
-                        self.source, dist.get_rank(), size, str(self.cached_stamp)))
-                    self.m_parameter = torch.zeros(size + 3)
-                except Exception as e:
+                            self.source, dist.get_rank(), size, str(self.cached_stamp)))
+                except Exception as _:
                     time.sleep(0.05)
                     size = int(float(f.read().strip()))
                     if dist.get_rank() == 0:
                         print('RECEIVING MESSAGE %dto%d.size:%d, changed time : %s' % (
                             self.source, dist.get_rank(), size, str(self.cached_stamp)))
                     self.m_parameter = torch.zeros(size + 3)
-                    # raise (e)
             try:
                 sender = dist.recv(tensor=self.m_parameter, src=self.source)
             except Exception as e:
@@ -176,11 +176,8 @@ def send_message(message_code, payload, dst=0, gradient_version=None):
         print('%s SENDING MESSAGE %s gradient_version %d, %dto%d.size:%d' % (
             str(time.time()), message_code, gradient_version, dist.get_rank(), dst, payload.numel()))
     size = str(payload.numel())
-    start = time.time()
     with open('%dto%d.size' % (dist.get_rank(), dst), 'w') as f:
         f.write(size)
-    end = time.time()
-    print('write', end - start)
     dist.isend(tensor=m_parameter, dst=dst)
 
 #
