@@ -2,7 +2,6 @@
 """
 Parameter server for distbelief
 """
-import time
 
 import logging
 import threading
@@ -75,7 +74,7 @@ class GradientWarehouse:
         return agg_gradient, version
 
     def sync_model(self):
-        self.synced_model = self.global_model.clone()
+        self.synced_model.copy_(self.global_model)
         # self.synced_version = self
         return self.synced_model
 
@@ -113,61 +112,24 @@ class GradientServer(GradientMessageListener):
             agg_gradient, new_version = self.gradient_warehouse.update(sender, gradient_version, parameter)
             send_message(GSMessageCode.ModelUpdate, self.gradient_warehouse.global_model, dst=sender,
                          gradient_version=gradient_version)
-            # if sender == 1 and self.gradient_warehouse.max_version % 50 is 1 and self.gradient_warehouse.max_version > 10:
-            #     self.gradient_warehouse.sync_model()
-            #     self.gradient_warehouse.un_synced_worker = set(range(1, self.gradient_warehouse.worker_num))
-            # if sender in self.gradient_warehouse.un_synced_worker:
-            #     self.sync_worker_model(sender, new_version)
-            #     self.gradient_warehouse.un_synced_worker.remove(sender)
-            # else:
-            #     # print('synced_model:', self.gradient_warehouse.synced_model)
-            #     # print('updated_model:', self.gradient_warehouse.synced_model.add(agg_gradient))
-            #     send_message(GSMessageCode.GradientUpdate, agg_gradient,
-            #                  dst=sender,
-            #                  gradient_version=new_version)
         elif message_code == GSMessageCode.SparseGradientUpdate:
             parameter = unravel_sparse_gradient(parameter)
             agg_gradient, new_version = self.gradient_warehouse.update(sender, gradient_version, parameter)
-            if sender == 1 and self.gradient_warehouse.max_version % 50 is 1 and gradient_version > 20:
+            if sender == 1 and self.gradient_warehouse.max_version % 100 is 1 and gradient_version > 20:
                 self.gradient_warehouse.sync_model()
                 self.gradient_warehouse.un_synced_worker = set(range(1, self.gradient_warehouse.worker_num))
-            if self.gradient_warehouse.max_version % 100 is 1 and self.gradient_warehouse.max_version > 50:
-                # self.acc_send_grad.zero_()
-                pass
             if sender in self.gradient_warehouse.un_synced_worker:
                 self.acc_send_grad.zero_()
                 self.sync_worker_model(sender, new_version)
                 self.gradient_warehouse.un_synced_worker.remove(sender)
-                # self.un_synced_worker = set(range(1, self.gradient_warehouse.worker_num))
-            # if sender in self.un_synced_worker:
-            #     self.sync_worker_model(sender, new_version)
-            #     self.un_synced_worker.remove(sender)
             else:
-                start = time.time()
                 send_grad = agg_gradient.add(-1, self.acc_send_grad)
-                server_gradient_filter(self.net, send_grad, rate=0.04)
-                # unravel_model_grad(self.net, send_grad)
-                # worker_gradient_filter(self.net, rate=0.04)
-                # raveled_gradients = ravel_model_params(self.net, grads=True, cuda=True)
-                sparse_agg_gradient = ravel_sparse_gradient(send_grad)
-                send_message(GSMessageCode.SparseGradientUpdate, sparse_agg_gradient,
+                server_gradient_filter(self.net, send_grad, rate=0.02)
+                self.acc_send_grad.add_(send_grad)
+                send_grad = ravel_sparse_gradient(send_grad)
+                send_message(GSMessageCode.SparseGradientUpdate, send_grad,
                              dst=sender,
                              gradient_version=new_version)
-                # send_message(GSMessageCode.GradientUpdate, raveled_gradients,
-                #              dst=sender,
-                #              gradient_version=new_version)
-                # print('acc %f, send %f'%(self.acc_send_grad.sum(),send_grad.sum()))
-                self.acc_send_grad.add_(send_grad)
-                # for p in self.net.parameters():
-                #     if p.grad is not None:
-                #         p.grad.detach_()
-                #         p.grad.zero_()
-                #     else:
-                #         p.grad = p.data.clone()
-                #         p.grad.zero_()
-                end = time.time()
-                # print(end - start)
-
 
         else:
             raise Exception('GSMessageCode not implemented')

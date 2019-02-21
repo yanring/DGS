@@ -1,11 +1,8 @@
-import sys
 import time
 
-import os
 import torch
+import torch.distributed as dist
 
-WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname('main.py')))
-sys.path.append(WORKPATH)
 # from utils import messaging
 
 current_model_size = None
@@ -51,6 +48,7 @@ def update_model_params(model, parameter_update, lr):
     for parameter in model.parameters():
         numel = parameter.data.numel()
         size = parameter.data.size()
+        # print(parameter.data.device,parameter_update.device)
         parameter.data.add_(-lr, parameter_update[current_index:current_index + numel].view(size))
         current_index += numel
 
@@ -103,7 +101,7 @@ def worker_gradient_executor(net, payload, rate=0.01, lr=0.1):
     m_parameter = payload
     for param in net.parameters():
         numel = param.data.numel()
-        m_parameter[current_index:current_index + numel] = param.grad.data.clone().view(-1)
+        m_parameter[current_index:current_index + numel].copy_(param.grad.data.view(-1))
         temp = m_parameter[current_index:current_index + numel]
         topn = torch.topk(abs(temp), int(temp.nelement() * rate) if int(temp.nelement() * rate) != 0 else 1)
         threshold = float(topn[0][-1])
@@ -134,15 +132,15 @@ def worker_gradient_filter(net, rate=0.01):
 
 
 def server_gradient_filter(net, gradients, rate=0.01):
-    start = time.time()
     current_index = 0
     for param in net.parameters():
         numel = param.data.numel()
         temp = gradients[current_index:current_index + numel]
+        current_index += numel
         topn = torch.topk(abs(temp), int(temp.nelement() * rate) if int(temp.nelement() * rate) != 0 else 1)
         threshold = float(topn[0][-1])
-        temp[abs(temp) < threshold] = 0
-    end = time.time()
+        if threshold > 0:
+            temp[abs(temp) < threshold] = 0
 
 
 def unravel_model_grad(model, parameter_update):
@@ -182,6 +180,7 @@ def unravel_sparse_gradient(sparse_gradient):
     i = sparse_gradient[:split]
     v = sparse_gradient[split:]
     # print(i.t().long().size(), v.size(),torch.Size([2472266]))
-    dense_gradient = torch.sparse.FloatTensor(i.reshape(1, -1).long(), v, torch.Size([2472266])).to_dense()
+    dense_gradient = torch.sparse.FloatTensor(i.reshape(1, -1).long(), v, torch.Size([2472266])).to_dense().cuda(
+        int(dist.get_rank() % torch.cuda.device_count()))
     # print(dense_gradient.sum())
     return dense_gradient

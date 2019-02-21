@@ -89,7 +89,7 @@ def main(args):
                 inputs, labels = inputs.cuda(), labels.cuda()
 
             # zero the parameter gradients
-            optimizer.zero_grad()
+            # optimizer.zero_grad()
             # forward + backward + optimize
             outputs = net(inputs)
             loss = F.cross_entropy(outputs, labels)
@@ -170,7 +170,7 @@ def init_server(args):
     model = AlexNet()
     # model = ResNet18()
     if messaging.isCUDA:
-        model.cuda()
+        model = model.cuda()
     gradient_warehouse = GradientWarehouse(worker_num=args.world_size, model=model)
     threads_num = dist.get_world_size() - 1
     threads = []
@@ -207,6 +207,12 @@ if __name__ == "__main__":
     parser.add_argument('--port', type=str, default='29500', help='port on master node to communicate with')
     args = parser.parse_args()
     print(args)
+    if args.cuda:
+        os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 2)
+        print('Using device%s, device count:%d' % (os.environ['CUDA_VISIBLE_DEVICES'], torch.cuda.device_count()))
+        torch.cuda.set_device(int(args.rank % torch.cuda.device_count()))
+        print('using deviece %d' % int(args.rank % torch.cuda.device_count()))
+    # os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(str(x) for x in args.gpu)
 
     if not args.no_distributed:
         """ Initialize the distributed environment.

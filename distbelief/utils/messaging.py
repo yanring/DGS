@@ -21,6 +21,8 @@ def tail(filename):
             if not line:
                 time.sleep(0.01)
                 continue
+            if dist.get_rank() == 0:
+                print('delay:', time.time() - os.stat(filename).st_mtime)
             yield int(line)
 
 
@@ -142,6 +144,9 @@ class GradientMessageListener(Thread):
         while self.running:
             _LOGGER.info("Polling for sparse message...")
             for size in tail(self.size_filename):
+                if dist.get_rank() == 0:
+                    print('RECEIVING MESSAGE %dto%d.size:%d,' % (
+                        self.source, dist.get_rank(), size))
                 self.m_parameter = torch.zeros(size + 3)
                 try:
                     sender = dist.recv(tensor=self.m_parameter, src=self.source)
@@ -151,8 +156,10 @@ class GradientMessageListener(Thread):
                     print('Exception :', e)
                     time.sleep(0.5)
                     continue
-                if dist.get_rank() == 0:
-                    self.m_parameter = self.m_parameter.cuda()
+                # if dist.get_rank() == 0:
+                # with torch.cuda.device(int(dist.get_rank() % torch.cuda.device_count())):
+                self.m_parameter = self.m_parameter.cuda(int(dist.get_rank() % torch.cuda.device_count()))
+                # print('suppose to be cuda %d,%s'%(int(dist.get_rank() % torch.cuda.device_count()),self.m_parameter.device))
                 self.receive(int(self.m_parameter[0].item()),
                              GSMessageCode(self.m_parameter[1].item()),
                              int(self.m_parameter[2].item()),
@@ -197,15 +204,15 @@ def send_message(message_code, payload, dst=0, gradient_version=None):
     # print(m_parameter.size(), payload.size())
     if payload.is_cuda:
         payload = payload.cpu()
-    m_parameter = torch.cat((m_parameter, payload))
+    size = str(payload.numel())
+    payload = torch.cat((m_parameter, payload))
     if dist.get_rank() == 0:
         print('%s SENDING MESSAGE %s gradient_version %d, %dto%d.size:%d' % (
             str(time.time()), message_code, gradient_version, dist.get_rank(), dst, payload.numel()))
-    size = str(payload.numel())
     with open('%dto%d.size' % (dist.get_rank(), dst), 'a') as f:
         f.write(size)
     # print('send file changed:', os.stat('%dto%d.size' % (dist.get_rank(), dst)).st_mtime )
-    dist.isend(tensor=m_parameter, dst=dst)
+    dist.isend(tensor=payload, dst=dst)
 
 #
 # def send_sparse_gradient(net, dst=0, gradient_version=None):
