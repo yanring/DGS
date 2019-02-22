@@ -2,9 +2,12 @@ import time
 
 import logging
 import os
+import queue
+import socket
 import torch
 import torch.distributed as dist
 from enum import Enum
+from multiprocessing.managers import BaseManager
 from threading import Thread
 
 from distbelief.utils.serialization import ravel_model_params
@@ -12,6 +15,7 @@ from distbelief.utils.serialization import ravel_model_params
 _LOGGER = logging.getLogger(__name__)
 
 isCUDA = 0
+manager = None
 
 
 def tail(filename):
@@ -104,7 +108,32 @@ class GradientMessageListener(Thread):
         self.m_parameter = torch.zeros(ravel_model_params(model, cuda=True).numel() + 3)
         self.cached_stamp = 0
         self.size_filename = None
+        self.manager = None
+
+        self.a1 = queue.Queue()
+        self.b1 = queue.Queue()
+        self.a2 = queue.Queue()
+        self.b2 = queue.Queue()
+        self.a3 = queue.Queue()
+        self.b3 = queue.Queue()
+        self.a4 = queue.Queue()
+        self.b4 = queue.Queue()
+
+        if dist.get_rank() == 0 and self.source == 1:
+            self.init_server_queue_manager()
+        elif dist.get_rank() > 0:
+            self.recv_queue, self.send_queue = self.init_worker_queue_manager()
+        # if dist.get_rank() == 0:
+        #     exec('self.recv_queue = self.manager.0from%d()' % source)
         super(GradientMessageListener, self).__init__()
+
+    @classmethod
+    def get_send_queue(cls, index):
+        return cls.send_list[index]
+
+    @classmethod
+    def get_recv_queue(cls, index):
+        return cls.recv_list[index]
 
     def receive(self, sender, message_code, gradient_version, parameter):
         """receive
@@ -116,24 +145,6 @@ class GradientMessageListener(Thread):
         """
         raise NotImplementedError()
 
-    # def run(self):
-    #     # for dense gradient transmission
-    #     _LOGGER.info("Started Running!")
-    #     self.running = True
-    #     while self.running:
-    #         _LOGGER.info("Polling for dense message...")
-    #         # dist.recv(tensor=self.m_parameter)
-    #         # i = torch.LongTensor([[0, 1, 1],
-    #         #                       [2, 0, 2]])
-    #         # v = torch.FloatTensor([3, 4, 5])
-    #         # m_parameter = torch.sparse.FloatTensor(i, v, torch.Size([10, 3]))
-    #         sender = dist.recv(tensor=self.m_parameter)
-    #         # print(m_parameter)
-    #         self.receive(int(self.m_parameter[0].item()),
-    #                      GSMessageCode(self.m_parameter[1].item()),
-    #                      int(self.m_parameter[2].item()),
-    #                      self.m_parameter[3:])
-
     def run(self):
         # for sparse gradient transmission
         _LOGGER.info("Started Running!")
@@ -143,56 +154,101 @@ class GradientMessageListener(Thread):
             time.sleep(0.5)
         while self.running:
             _LOGGER.info("Polling for sparse message...")
-            for size in tail(self.size_filename):
+            # for size in tail(self.size_filename):
+            while True:
+                size = QueueManager.get_size(self.source)
                 if dist.get_rank() == 0:
                     print('RECEIVING MESSAGE %dto%d.size:%d,' % (
                         self.source, dist.get_rank(), size))
                 self.m_parameter = torch.zeros(size + 3)
                 try:
                     sender = dist.recv(tensor=self.m_parameter, src=self.source)
-                    self.cached_stamp = os.stat(self.size_filename).st_mtime
-                    # print('recv file changed:', self.cached_stamp)
                 except Exception as e:
                     print('Exception :', e)
                     time.sleep(0.5)
                     continue
-                # if dist.get_rank() == 0:
-                # with torch.cuda.device(int(dist.get_rank() % torch.cuda.device_count())):
-                self.m_parameter = self.m_parameter.cuda(int(dist.get_rank() % torch.cuda.device_count()))
-                # print('suppose to be cuda %d,%s'%(int(dist.get_rank() % torch.cuda.device_count()),self.m_parameter.device))
+                self.m_parameter = self.m_parameter.cuda()
                 self.receive(int(self.m_parameter[0].item()),
                              GSMessageCode(self.m_parameter[1].item()),
                              int(self.m_parameter[2].item()),
                              self.m_parameter[3:])
 
-            # with open(self.size_filename, 'r') as f:
-            #     try:
-            #         size = int(float(f.read().strip()))
-            #         if dist.get_rank() >= 0:
-            #             print('RECEIVING MESSAGE %dto%d.size:%d, changed time : %s' % (
-            #                 self.source, dist.get_rank(), size, str(self.cached_stamp)))
-            #     except Exception as e:
-            #         print(e)
-            #         time.sleep(0.5)
-            #         size = int(float(f.read().strip()))
-            #         if dist.get_rank() == 0:
-            #             print('RECEIVING MESSAGE %dto%d.size:%d, changed time : %s' % (
-            #                 self.source, dist.get_rank(), size, str(self.cached_stamp)))
-            # self.m_parameter = torch.zeros(size + 3)
-            # try:
-            #     sender = dist.recv(tensor=self.m_parameter, src=self.source)
-            #     self.cached_stamp = os.stat(self.size_filename).st_mtime
-            #     print('recv file changed:', self.cached_stamp)
-            # except Exception as e:
-            #     print('Exception :', e)
-            #     time.sleep(0.5)
-            #     continue
-            # if dist.get_rank() >= 0:
-            #     self.m_parameter = self.m_parameter.cuda()
-            # self.receive(int(self.m_parameter[0].item()),
-            #              GSMessageCode(self.m_parameter[1].item()),
-            #              int(self.m_parameter[2].item()),
-            #              self.m_parameter[3:])
+    def init_server_queue_manager(self):
+
+        QueueManager.register('from0to%d' % 1, callable=lambda: self.a1)
+        QueueManager.register('from%dto0' % 1, callable=lambda: self.b1)
+        QueueManager.register('from0to%d' % 2, callable=lambda: self.a2)
+        QueueManager.register('from%dto0' % 2, callable=lambda: self.b2)
+        QueueManager.register('from0to%d' % 3, callable=lambda: self.a3)
+        QueueManager.register('from%dto0' % 3, callable=lambda: self.b3)
+        QueueManager.register('from0to%d' % 4, callable=lambda: self.a4)
+        QueueManager.register('from%dto0' % 4, callable=lambda: self.b4)
+        # for i in range(1, dist.get_world_size()):
+        #     # QueueManager.register('from0to%d' % 1, callable=eval('lambda: GradientMessageListener.a%d'%i))
+        #     # QueueManager.register('from%dto0' % 1, callable=eval('lambda: GradientMessageListener.b%d'%i))
+        #     # a = lambda: send_list[i]
+        #     # b = lambda:recv_list[i]
+        #     QueueManager.register('from0to%d' % i, callable=lambda: GradientMessageListener.get_send_queue(i))
+        #     QueueManager.register('from%dto0' % i, callable=lambda: GradientMessageListener.get_recv_queue(i))
+        #     pass
+        self.manager = QueueManager(address=('', 5000), authkey=b'abc')
+        QueueManager.send_queue_list.append(0)
+        QueueManager.recv_queue_list.append(0)
+        QueueManager.manager = self.manager
+        self.manager.start()
+        for i in range(1, dist.get_world_size()):
+            send_queue = eval('self.manager.from0to%d' % i)()
+            QueueManager.send_queue_list.append(send_queue)
+            recv_queue = eval('self.manager.from%dto0' % i)()
+            QueueManager.recv_queue_list.append(recv_queue)
+        pass
+
+    def init_worker_queue_manager(self):
+        time.sleep(1)
+        QueueManager.register('from0to%d' % dist.get_rank())
+        QueueManager.register('from%dto0' % dist.get_rank())
+        # self.manager = QueueManager(address=(socket.gethostbyname('localhost'), 5000), authkey=b'abc')
+        if socket.gethostname() == 'yan-pc':
+            self.manager = QueueManager(address=('172.18.166.108', 5000), authkey=b'abc')
+        else:
+            self.manager = QueueManager(address=(socket.gethostbyname('ln5'), 5000), authkey=b'abc')
+        self.manager.connect()
+        send_queue = eval('self.manager.from%dto0' % dist.get_rank())()
+        QueueManager.send_queue_list.append(send_queue)
+        recv_queue = eval('self.manager.from0to%d' % dist.get_rank())()
+        QueueManager.recv_queue_list.append(recv_queue)
+        QueueManager.manager = self.manager
+        return recv_queue, send_queue
+
+
+class QueueManager(BaseManager):
+    manager = None
+    send_queue_list = []
+    recv_queue_list = []
+
+    @classmethod
+    def get_manager(cls):
+        return cls.manager
+
+    @classmethod
+    def get_size(cls, opposite):
+        recv_queue = cls.recv_queue_list[opposite]
+        # exec('recv_queue = cls.manager.from%dto%d()' % (source, target))
+        res = None
+        try:
+            res = recv_queue.get(timeout=100)
+        except queue.Empty:
+            print('task queue is empty')
+        # print('RECV ', res, type(recv_queue), recv_queue)
+        return int(res)
+
+    @classmethod
+    def put_size(cls, opposite, size):
+        # send_queue = None
+        # exec('send_queue = cls.manager.from%dto%d()' % (source, target))
+        send_queue = cls.send_queue_list[opposite]
+        # print('SEND ', type(send_queue), size, send_queue)
+        send_queue.put(size)
 
 
 def send_message(message_code, payload, dst=0, gradient_version=None):
@@ -209,18 +265,7 @@ def send_message(message_code, payload, dst=0, gradient_version=None):
     if dist.get_rank() == 0:
         print('%s SENDING MESSAGE %s gradient_version %d, %dto%d.size:%d' % (
             str(time.time()), message_code, gradient_version, dist.get_rank(), dst, payload.numel()))
-    with open('%dto%d.size' % (dist.get_rank(), dst), 'a') as f:
-        f.write(size)
-    # print('send file changed:', os.stat('%dto%d.size' % (dist.get_rank(), dst)).st_mtime )
+    # with open('%dto%d.size' % (dist.get_rank(), dst), 'a') as f:
+    #     f.write(size)
+    QueueManager.put_size(dst, size)
     dist.isend(tensor=payload, dst=dst)
-
-#
-# def send_sparse_gradient(net, dst=0, gradient_version=None):
-#     _LOGGER.info("SENDING SPARSE MESSAGE: {} RANK: {}".format('send_sparse_message', dist.get_rank()))
-#     # size, sparse_gradient = ravel_sparse_gradient(net)
-#     # send_message(GSMessageCode.SparseSize, size, dst, gradient_version)
-#     # time.sleep(0.1)
-#     raise Exception('')
-#     # send_message(GSMessageCode.SparseIndex, index, dst, gradient_version)
-#     # send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst, gradient_version)
-#     # dist.isend(tensor=m_parameter, dst=dst)

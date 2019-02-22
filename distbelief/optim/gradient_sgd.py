@@ -54,7 +54,7 @@ class GradientListener(GradientMessageListener):
             print('sync model!')
             self.flag = True
             # TODO change back
-            if self.version > 10:
+            if self.version > 1:
                 self.queue.put(gradient_version)
             # lock.release()
 
@@ -108,12 +108,12 @@ class GradientSGD(Optimizer):
         self.listener.lr = lr
 
         # keep track of accumulated gradients so that we can send
-        # # ASYNC
+        # ASYNC
         # self.filter_gradient = ravel_model_params(self.model, grads=True, cuda=True).mul_(lr)
         # send_message(GSMessageCode.GradientUpdate, self.filter_gradient, dst=0,
         #              gradient_version=self.listener.version + 1)
 
-        # COMPRESSION
+        # # COMPRESSION
         raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, rate=0.01, lr=lr)
         sparse_gradient = ravel_sparse_gradient(raveled_gradients)
         send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst=0,

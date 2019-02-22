@@ -85,14 +85,10 @@ class GradientServer(GradientMessageListener):
     def __init__(self, model, gradient_warehouse, storage_num=10, rank=0):
         _LOGGER.info("Creating GradientServer")
         print("Creating GradientServer")
-        # self.parameter_shard = torch.rand(ravel_model_params(model).numel())
         self.gradient_warehouse = gradient_warehouse
-        # self.source = rank
         super(GradientServer, self).__init__(model, source=rank)
-        self.model = torch.zeros(ravel_model_params(model).numel()).cuda()
         self.net = model
-        self.gradient_warehouse.model = self.model
-        self.acc_send_grad = self.model.clone()
+        self.acc_send_grad = torch.zeros(ravel_model_params(model).numel()).cuda()
         if rank == 1:
             for i in range(1, self.gradient_warehouse.worker_num):
                 self.sync_worker_model(i, 1)
@@ -109,7 +105,7 @@ class GradientServer(GradientMessageListener):
                                                                                          gradient_version))
 
         if message_code == GSMessageCode.GradientUpdate:
-            agg_gradient, new_version = self.gradient_warehouse.update(sender, gradient_version, parameter)
+            self.gradient_warehouse.update(sender, gradient_version, parameter)
             send_message(GSMessageCode.ModelUpdate, self.gradient_warehouse.global_model, dst=sender,
                          gradient_version=gradient_version)
         elif message_code == GSMessageCode.SparseGradientUpdate:

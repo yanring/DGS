@@ -1,7 +1,6 @@
 import time
 
 import torch
-import torch.distributed as dist
 
 # from utils import messaging
 
@@ -123,6 +122,10 @@ def worker_gradient_filter(net, rate=0.01):
         temp = param.grad.data.clone()
         topn = torch.topk(abs(temp.view(1, -1)), int(temp.nelement() * rate) if int(temp.nelement() * rate) != 0 else 1)
         threshold = float(topn[0][0][-1])
+        if threshold == 0:
+            temp.zero_()
+            paralist.append(temp)
+            continue
         temp[abs(temp) >= threshold] = 0
         param.grad.data[abs(param.grad.data) < threshold] = 0
         paralist.append(temp)
@@ -180,7 +183,8 @@ def unravel_sparse_gradient(sparse_gradient):
     i = sparse_gradient[:split]
     v = sparse_gradient[split:]
     # print(i.t().long().size(), v.size(),torch.Size([2472266]))
-    dense_gradient = torch.sparse.FloatTensor(i.reshape(1, -1).long(), v, torch.Size([2472266])).to_dense().cuda(
-        int(dist.get_rank() % torch.cuda.device_count()))
+    # dense_gradient = torch.sparse.FloatTensor(i.reshape(1, -1).long(), v, torch.Size([2472266])).to_dense().cuda(
+    #     int(dist.get_rank() % torch.cuda.device_count()))
+    dense_gradient = torch.sparse.FloatTensor(i.reshape(1, -1).long(), v, torch.Size([2472266])).to_dense().cuda()
     # print(dense_gradient.sum())
     return dense_gradient

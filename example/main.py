@@ -166,7 +166,6 @@ def evaluate(net, testloader, args, verbose=False):
 
 
 def init_server(args):
-    os.system('rm *.size')
     model = AlexNet()
     # model = ResNet18()
     if messaging.isCUDA:
@@ -210,16 +209,11 @@ if __name__ == "__main__":
     if args.cuda:
         os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 2)
         print('Using device%s, device count:%d' % (os.environ['CUDA_VISIBLE_DEVICES'], torch.cuda.device_count()))
-        torch.cuda.set_device(int(args.rank % torch.cuda.device_count()))
-        print('using deviece %d' % int(args.rank % torch.cuda.device_count()))
-    # os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(str(x) for x in args.gpu)
 
     if not args.no_distributed:
         """ Initialize the distributed environment.
         Server and clients must call this as an entry point.
         """
-        # os.environ['MASTER_ADDR'] = args.master
-        # os.environ['MASTER_PORT'] = args.port
         print('%s/sharedfile chmod' % WORKPATH)
         if os.path.exists('%s/sharedfile' % WORKPATH):
             try:
