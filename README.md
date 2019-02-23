@@ -1,5 +1,5 @@
-# working on
-# distbelief
+# working on 
+# Gradient Server
 Implementing Google's DistBelief paper.
 
 Check out the [blog post](https://jcaip.github.io/Distbelief/)!
