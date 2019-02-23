@@ -1,6 +1,7 @@
 import sys
 
 import os
+import socket
 
 WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname('main.py')))
 sys.path.append(WORKPATH)
@@ -207,9 +208,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print(args)
     if args.cuda:
-        os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 2)
+        if socket.gethostname() == 'yan-pc':
+            os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 1)
+        else:
+            os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 2)
         print('Using device%s, device count:%d' % (os.environ['CUDA_VISIBLE_DEVICES'], torch.cuda.device_count()))
-
     if not args.no_distributed:
         """ Initialize the distributed environment.
         Server and clients must call this as an entry point.

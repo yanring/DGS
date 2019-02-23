@@ -149,9 +149,9 @@ class GradientMessageListener(Thread):
         # for sparse gradient transmission
         _LOGGER.info("Started Running!")
         self.running = True
-        self.size_filename = '%dto%d.size' % (self.source, dist.get_rank())
-        while not os.path.exists(self.size_filename):
-            time.sleep(0.5)
+        # self.size_filename = '%dto%d.size' % (self.source, dist.get_rank())
+        # while not os.path.exists(self.size_filename):
+        #     time.sleep(0.5)
         while self.running:
             _LOGGER.info("Polling for sparse message...")
             # for size in tail(self.size_filename):
@@ -211,7 +211,8 @@ class GradientMessageListener(Thread):
         if socket.gethostname() == 'yan-pc':
             self.manager = QueueManager(address=('172.18.166.108', 5000), authkey=b'abc')
         else:
-            self.manager = QueueManager(address=(socket.gethostbyname('ln5'), 5000), authkey=b'abc')
+            print('queue init in th')
+            self.manager = QueueManager(address=('10.88.2.2', 5000), authkey=b'abc')
         self.manager.connect()
         send_queue = eval('self.manager.from%dto0' % dist.get_rank())()
         QueueManager.send_queue_list.append(send_queue)
@@ -236,7 +237,7 @@ class QueueManager(BaseManager):
         # exec('recv_queue = cls.manager.from%dto%d()' % (source, target))
         res = None
         try:
-            res = recv_queue.get(timeout=100)
+            res = recv_queue.get(timeout=10)
         except queue.Empty:
             print('task queue is empty')
         # print('RECV ', res, type(recv_queue), recv_queue)
