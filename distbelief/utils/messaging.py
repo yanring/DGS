@@ -10,7 +10,7 @@ from enum import Enum
 from multiprocessing.managers import BaseManager
 from threading import Thread
 
-from distbelief.utils.serialization import ravel_model_params
+from distbelief.utils.serialization import ravel_model_params, unravel_sparse_gradient, ravel_sparse_gradient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ class ModelSize(Enum):
 
 class MessageListener(Thread):
     """MessageListener
-   
+
     base class for message listeners, extends pythons threading Thread
     """
 
@@ -75,7 +75,7 @@ class MessageListener(Thread):
         """receive
 
         :param sender: rank id of the sender
-        :param message_code: Enum code 
+        :param message_code: Enum code
         :param parameter: the data payload
         """
         raise NotImplementedError()
@@ -131,6 +131,8 @@ def rta4():
 
 def rtb4():
     return b4
+
+
 class GradientMessageListener(Thread):
     """MessageListener
 
@@ -163,17 +165,7 @@ class GradientMessageListener(Thread):
             self.init_server_queue_manager()
         elif dist.get_rank() > 0:
             self.recv_queue, self.send_queue = self.init_worker_queue_manager()
-        # if dist.get_rank() == 0:
-        #     exec('self.recv_queue = self.manager.0from%d()' % source)
         super(GradientMessageListener, self).__init__()
-
-    @classmethod
-    def get_send_queue(cls, index):
-        return cls.send_list[index]
-
-    @classmethod
-    def get_recv_queue(cls, index):
-        return cls.recv_list[index]
 
     def receive(self, sender, message_code, gradient_version, parameter):
         """receive
@@ -189,9 +181,6 @@ class GradientMessageListener(Thread):
         # for sparse gradient transmission
         _LOGGER.info("Started Running!")
         self.running = True
-        # self.size_filename = '%dto%d.size' % (self.source, dist.get_rank())
-        # while not os.path.exists(self.size_filename):
-        #     time.sleep(0.5)
         while self.running:
             _LOGGER.info("Polling for sparse message...")
             # for size in tail(self.size_filename):
@@ -223,14 +212,6 @@ class GradientMessageListener(Thread):
         QueueManager.register('from%dto0' % 3, callable=rtb3)
         QueueManager.register('from0to%d' % 4, callable=rta4)
         QueueManager.register('from%dto0' % 4, callable=rtb4)
-        # for i in range(1, dist.get_world_size()):
-        #     # QueueManager.register('from0to%d' % 1, callable=eval('lambda: GradientMessageListener.a%d'%i))
-        #     # QueueManager.register('from%dto0' % 1, callable=eval('lambda: GradientMessageListener.b%d'%i))
-        #     # a = lambda: send_list[i]
-        #     # b = lambda:recv_list[i]
-        #     QueueManager.register('from0to%d' % i, callable=lambda: GradientMessageListener.get_send_queue(i))
-        #     QueueManager.register('from%dto0' % i, callable=lambda: GradientMessageListener.get_recv_queue(i))
-        #     pass
         self.manager = QueueManager(address=('', 5000), authkey=b'abc')
         QueueManager.send_queue_list.append(0)
         QueueManager.recv_queue_list.append(0)
@@ -244,7 +225,7 @@ class GradientMessageListener(Thread):
         pass
 
     def init_worker_queue_manager(self):
-        time.sleep(1)
+        # time.sleep(1)
         QueueManager.register('from0to%d' % dist.get_rank())
         QueueManager.register('from%dto0' % dist.get_rank())
         # self.manager = QueueManager(address=(socket.gethostbyname('localhost'), 5000), authkey=b'abc')
@@ -262,6 +243,70 @@ class GradientMessageListener(Thread):
         return recv_queue, send_queue
 
 
+class GradientServer(GradientMessageListener):
+    def __init__(self, shared_gradient, shared_queue_recv, shared_queue_send, model_size, source=0):
+        self.shared_gradient = shared_gradient
+        self.shared_queue_recv = shared_queue_recv
+        self.shared_queue_send = shared_queue_send
+        super().__init__(model_size, source)
+
+    def receive(self, sender, message_code, gradient_version, parameter):
+        # put gradient update to queue
+        if message_code == GSMessageCode.SparseGradientUpdate:
+            self.shared_gradient.copy_(unravel_sparse_gradient(parameter))
+        else:
+            self.shared_gradient.copy_(parameter)
+        self.shared_queue_recv.put([sender, message_code, gradient_version])
+
+    def send_message(self, message_code, gradient_version=None):
+        """Sends a message to a destination
+        Concatenates both the message code and destination with the payload into a single tensor and then sends that as a tensor
+        """
+        _LOGGER.info("SENDING MESSAGE: {} RANK: {}".format(message_code, dist.get_rank()))
+        m_parameter = torch.Tensor([dist.get_rank(), message_code.value, gradient_version])
+        payload = self.shared_gradient
+        if message_code == GSMessageCode.SparseGradientUpdate:
+            payload = ravel_sparse_gradient(payload).cpu()
+        else:
+            payload = payload.cpu()
+        size = str(payload.numel())
+        payload = torch.cat((m_parameter, payload))
+        if dist.get_rank() == 0:
+            print('%s SENDING MESSAGE %s gradient_version %d, %dto%d.size:%d' % (
+                str(time.time()), message_code, gradient_version, dist.get_rank(), self.source, payload.numel()))
+        QueueManager.put_size(self.source, size)
+        dist.isend(tensor=payload, dst=self.source)
+
+    def run(self):
+        # for sparse gradient transmission
+        _LOGGER.info("Started Running!")
+        self.running = True
+        send_info = self.shared_queue_send.get()
+        self.send_message(send_info[0], gradient_version=send_info[1])
+        while self.running:
+            _LOGGER.info("Polling for sparse message...")
+            # for size in tail(self.size_filename):
+            while True:
+                size = QueueManager.get_size(self.source)
+                if dist.get_rank() == 0:
+                    print('RECEIVING MESSAGE %dto%d.size:%d,' % (
+                        self.source, dist.get_rank(), size))
+                self.m_parameter = torch.zeros(size + 3)
+                try:
+                    sender = dist.recv(tensor=self.m_parameter, src=self.source)
+                except Exception as e:
+                    print('Exception :', e)
+                    time.sleep(0.5)
+                    continue
+                self.m_parameter = self.m_parameter.cuda()
+                self.receive(int(self.m_parameter[0].item()),
+                             GSMessageCode(self.m_parameter[1].item()),
+                             int(self.m_parameter[2].item()),
+                             self.m_parameter[3:])
+                send_info = self.shared_queue_send.get()
+                self.send_message(send_info[0], gradient_version=send_info[1])
+
+
 class QueueManager(BaseManager):
     manager = None
     send_queue_list = []
@@ -277,7 +322,7 @@ class QueueManager(BaseManager):
         # exec('recv_queue = cls.manager.from%dto%d()' % (source, target))
         res = None
         try:
-            res = recv_queue.get(timeout=10)
+            res = recv_queue.get(timeout=20)
         except queue.Empty:
             print('task queue is empty')
         # print('RECV ', res, type(recv_queue), recv_queue)
