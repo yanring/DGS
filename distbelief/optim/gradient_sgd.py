@@ -24,10 +24,11 @@ class GradientListener(GradientMessageListener):
     """DownpourListener"""
 
     def __init__(self, model, queue):
-        super(GradientListener, self).__init__(model)
+        super(GradientListener, self).__init__(ravel_model_params(model).numel())
         self.lr = 0.05
         self.queue = queue
         self.version = 0
+        self.model = model
         self.flag = False
 
     def receive(self, sender, message_code, gradient_version, parameter, ):
@@ -79,7 +80,7 @@ class GradientSGD(Optimizer):
         self.idx = 0
         self.version = 0
         self.queue = Queue(maxsize=1)
-        self.listener = GradientListener(self.model, self.queue)
+        self.listener = GradientListener(model, self.queue)
         self.listener.start()
 
         super(GradientSGD, self).__init__(params, defaults)
@@ -113,7 +114,7 @@ class GradientSGD(Optimizer):
         # send_message(GSMessageCode.GradientUpdate, self.filter_gradient, dst=0,
         #              gradient_version=self.listener.version + 1)
 
-        # # COMPRESSION
+        # COMPRESSION
         raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, rate=0.01, lr=lr)
         sparse_gradient = ravel_sparse_gradient(raveled_gradients)
         send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst=0,

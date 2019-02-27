@@ -91,33 +91,73 @@ class MessageListener(Thread):
                          self.m_parameter[2:])
 
 
+a1 = queue.Queue()
+b1 = queue.Queue()
+a2 = queue.Queue()
+b2 = queue.Queue()
+a3 = queue.Queue()
+b3 = queue.Queue()
+a4 = queue.Queue()
+b4 = queue.Queue()
+
+
+def rta1():
+    return a1
+
+
+def rtb1():
+    return b1
+
+
+def rta2():
+    return a2
+
+
+def rtb2():
+    return b2
+
+
+def rta3():
+    return a3
+
+
+def rtb3():
+    return b3
+
+
+def rta4():
+    return a4
+
+
+def rtb4():
+    return b4
 class GradientMessageListener(Thread):
     """MessageListener
 
     base class for message listeners, extends pythons threading Thread
     """
 
-    def __init__(self, model, source=0):
+    def __init__(self, model_size, source=0):
         """__init__
 
         :param model: nn.Module to be defined by the user
         """
-        self.model = model
+        # self.model = model
         self.source = source
         _LOGGER.info("Setting m_parameter")
-        self.m_parameter = torch.zeros(ravel_model_params(model, cuda=True).numel() + 3)
+        self.m_parameter = torch.zeros(model_size + 3)
         self.cached_stamp = 0
         self.size_filename = None
         self.manager = None
 
-        self.a1 = queue.Queue()
-        self.b1 = queue.Queue()
-        self.a2 = queue.Queue()
-        self.b2 = queue.Queue()
-        self.a3 = queue.Queue()
-        self.b3 = queue.Queue()
-        self.a4 = queue.Queue()
-        self.b4 = queue.Queue()
+        # self.a1 = queue.Queue()
+        # self.b1 = queue.Queue()
+        # self.a2 = queue.Queue()
+        # self.b2 = queue.Queue()
+        # self.a3 = queue.Queue()
+        # self.b3 = queue.Queue()
+        # self.a4 = queue.Queue()
+        # self.b4 = queue.Queue()
 
         if dist.get_rank() == 0 and self.source == 1:
             self.init_server_queue_manager()
@@ -175,14 +215,14 @@ class GradientMessageListener(Thread):
 
     def init_server_queue_manager(self):
 
-        QueueManager.register('from0to%d' % 1, callable=lambda: self.a1)
-        QueueManager.register('from%dto0' % 1, callable=lambda: self.b1)
-        QueueManager.register('from0to%d' % 2, callable=lambda: self.a2)
-        QueueManager.register('from%dto0' % 2, callable=lambda: self.b2)
-        QueueManager.register('from0to%d' % 3, callable=lambda: self.a3)
-        QueueManager.register('from%dto0' % 3, callable=lambda: self.b3)
-        QueueManager.register('from0to%d' % 4, callable=lambda: self.a4)
-        QueueManager.register('from%dto0' % 4, callable=lambda: self.b4)
+        QueueManager.register('from0to%d' % 1, callable=rta1)
+        QueueManager.register('from%dto0' % 1, callable=rtb1)
+        QueueManager.register('from0to%d' % 2, callable=rta2)
+        QueueManager.register('from%dto0' % 2, callable=rtb2)
+        QueueManager.register('from0to%d' % 3, callable=rta3)
+        QueueManager.register('from%dto0' % 3, callable=rtb3)
+        QueueManager.register('from0to%d' % 4, callable=rta4)
+        QueueManager.register('from%dto0' % 4, callable=rtb4)
         # for i in range(1, dist.get_world_size()):
         #     # QueueManager.register('from0to%d' % 1, callable=eval('lambda: GradientMessageListener.a%d'%i))
         #     # QueueManager.register('from%dto0' % 1, callable=eval('lambda: GradientMessageListener.b%d'%i))
@@ -208,11 +248,11 @@ class GradientMessageListener(Thread):
         QueueManager.register('from0to%d' % dist.get_rank())
         QueueManager.register('from%dto0' % dist.get_rank())
         # self.manager = QueueManager(address=(socket.gethostbyname('localhost'), 5000), authkey=b'abc')
-        if socket.gethostname() == 'yan-pc':
+        if socket.gethostname() == 'yan-pc' or socket.gethostname() == 'yrx-MS-7A93':
             self.manager = QueueManager(address=('172.18.166.108', 5000), authkey=b'abc')
         else:
             print('queue init in th')
-            self.manager = QueueManager(address=('10.88.2.2', 5000), authkey=b'abc')
+            self.manager = QueueManager(address=('10.88.2.0', 5000), authkey=b'abc')
         self.manager.connect()
         send_queue = eval('self.manager.from%dto0' % dist.get_rank())()
         QueueManager.send_queue_list.append(send_queue)

@@ -1,4 +1,5 @@
 import sys
+import time
 
 import os
 import socket
@@ -6,6 +7,7 @@ import socket
 WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname('main.py')))
 sys.path.append(WORKPATH)
 from distbelief.utils.messaging import ModelSize
+from distbelief.utils.serialization import ravel_model_params
 
 from distbelief.utils import messaging, serialization
 
@@ -24,7 +26,11 @@ from sklearn.metrics import classification_report, accuracy_score
 import pandas as pd
 
 import torch.optim as optim
-from distbelief.server import GradientServer, GradientWarehouse
+from distbelief.server import GradientServer
+import torch.multiprocessing as mp
+
+
+# model = AlexNet().cuda()
 
 
 def get_dataset(args, transform):
@@ -82,6 +88,7 @@ def main(args):
         print("Training for epoch {}".format(epoch))
         # set distributed_sampler.epoch to shuffle data.
         trainloader.sampler.set_epoch(epoch)
+        start = time.time()
         for i, data in enumerate(trainloader, 0):
             # get the inputs
             inputs, labels = data
@@ -108,7 +115,7 @@ def main(args):
                 'training_loss': loss.item(),
                 'training_accuracy': accuracy,
             }
-            if i % 1 == 0:
+            if i % 20 == 0:
                 print("Timestamp: {timestamp} | "
                       "Iteration: {iteration:6} | "
                       "Loss: {training_loss:6.4f} | "
@@ -116,13 +123,16 @@ def main(args):
 
             logs.append(log_obj)
         if True:  # print every n mini-batches
+            end = time.time()
+            print('minibatch cost :%f' % ((end - start) / (781 / dist.get_world_size())))
             logs[-1]['test_loss'], logs[-1]['test_accuracy'] = evaluate(net, testloader, args)
             print("Timestamp: {timestamp} | "
                   "Iteration: {iteration:6} | "
                   "Loss: {training_loss:6.4f} | "
                   "Accuracy : {training_accuracy:6.4f} | "
                   "Test Loss: {test_loss:6.4f} | "
-                  "Test Accuracy: {test_accuracy:6.4f}".format(**logs[-1]))
+                  "Test Accuracy: {test_accuracy:6.4f}".format(**logs[-1])
+                  )
         # val_loss, val_accuracy = evaluate(net, testloader, args, verbose=True)
         scheduler.step(logs[-1]['test_loss'])
 
@@ -167,15 +177,22 @@ def evaluate(net, testloader, args, verbose=False):
 
 
 def init_server(args):
-    model = AlexNet()
+    # import torch.multiprocessing as mp
+    model = AlexNet().cuda()
     # model = ResNet18()
-    if messaging.isCUDA:
-        model = model.cuda()
-    gradient_warehouse = GradientWarehouse(worker_num=args.world_size, model=model)
+    # if messaging.isCUDA:
+    #     model.cuda()
+    # gradient_warehouse = GradientWarehouse(worker_num=args.world_size, model=model)
     threads_num = dist.get_world_size() - 1
+    # mp.set_start_method('spawn')
     threads = []
+    global_model = ravel_model_params(AlexNet().cuda(), cuda=True)
+    # global_model.share_memory_()
+    synced_model = global_model.clone()
+    # synced_model.share_memory_()
     for i in range(1, threads_num + 1):
-        th = GradientServer(model=model, gradient_warehouse=gradient_warehouse, rank=i)
+        th = GradientServer(model=model, rank=i, worker_num=args.world_size, global_model=global_model,
+                            synced_model=synced_model)
         threads.append(th)
         th.start()
     for t in threads:
@@ -229,10 +246,14 @@ if __name__ == "__main__":
 
             for infile in glob.glob(os.path.join(WORKPATH, '*.size')):
                 os.remove(infile)
+        if args.server:
+            mp.set_start_method('spawn', force=True)
+
         dist.init_process_group('tcp', init_method='file://%s/sharedfile' % WORKPATH, group_name='mygroup',
                                 world_size=args.world_size, rank=args.rank)
         if args.cuda:
             messaging.isCUDA = 1
         if args.server:
+            # mp.set_start_method('spawn')
             init_server(args)
     main(args)

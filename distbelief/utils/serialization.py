@@ -3,6 +3,10 @@ import time
 import torch
 
 # from utils import messaging
+# from example.main import transforms
+from example.models import AlexNet
+
+# model = AlexNet().cuda()
 
 current_model_size = None
 
@@ -134,7 +138,8 @@ def worker_gradient_filter(net, rate=0.01):
     # print(end - start)
 
 
-def server_gradient_filter(net, gradients, rate=0.01):
+def server_gradient_filter(gradients, rate=0.01):
+    net = AlexNet()
     current_index = 0
     for param in net.parameters():
         numel = param.data.numel()
@@ -178,13 +183,10 @@ def ravel_sparse_gradient(temp_param):
 
 
 def unravel_sparse_gradient(sparse_gradient):
-    # len is 2472266 11173962
+    # len is 2472266 11173962 2400w
     split = int(len(sparse_gradient) / 2)
     i = sparse_gradient[:split]
     v = sparse_gradient[split:]
-    # print(i.t().long().size(), v.size(),torch.Size([2472266]))
-    # dense_gradient = torch.sparse.FloatTensor(i.reshape(1, -1).long(), v, torch.Size([2472266])).to_dense().cuda(
-    #     int(dist.get_rank() % torch.cuda.device_count()))
     dense_gradient = torch.sparse.FloatTensor(i.reshape(1, -1).long(), v, torch.Size([2472266])).to_dense().cuda()
     # print(dense_gradient.sum())
     return dense_gradient
