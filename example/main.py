@@ -36,10 +36,9 @@ import torch.multiprocessing as mp
 
 def get_dataset(args, transform):
     """
-    :param dataset_name:
+    :param args:
     :param transform:
-    :param batch_size:
-    :return: iterators for the dataset
+    :return:
     """
     if args.dataset == 'MNIST':
         trainset = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform)
@@ -192,19 +191,20 @@ def init_server(args):
     global_model.share_memory_()
     synced_model = global_model.clone()
     synced_model.share_memory_()
-    shared_tensors = [synced_model.clone() for _ in range(args.world_size - 1)]
+    # shared_tensors = [synced_model.clone() for _ in range(args.world_size - 1)]
     shared_list = Manager().list([0 for _ in range(args.world_size - 1)])
 
     # print(shared_list)
     for i in range(1, threads_num + 1):
         # listener = GradientMessageListener(model_size=ravel_model_params(model).numel(), source=i)
-        share_tensor = shared_tensors[i - 1]
+        # share_tensor = shared_tensors[i - 1]
+        # share_tensor.share_memory_()
         share_queue_recv = mp.Queue()
         share_queue_send = mp.Queue()
-        th = GradientServer(share_tensor, share_queue_recv, share_queue_send,
+        th = GradientServer(share_queue_recv, share_queue_send,
                             model_size=ravel_model_params(model).numel(), source=i)
         th.start()
-        p = GradientExecutor(share_tensor, share_queue_recv, share_queue_send, shared_list, rank=i,
+        p = GradientExecutor(share_queue_recv, share_queue_send, shared_list, rank=i,
                              worker_num=args.world_size,
                              global_model=global_model,
                              synced_model=synced_model)

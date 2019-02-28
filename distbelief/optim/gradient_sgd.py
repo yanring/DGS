@@ -49,10 +49,9 @@ class GradientListener(GradientMessageListener):
             send_message(GSMessageCode.ModelUpdate, model, dst=0, gradient_version=0)
             print('send model to server')
         elif message_code == GSMessageCode.ModelUpdate:
-            print('version:', gradient_version, ' ', datetime.now(), ' synced model :', parameter)
+            print('sync model!', gradient_version, ' ', datetime.now(), ' synced model :', parameter.sum())
             unravel_model_params(self.model, parameter)
             self.version = gradient_version
-            print('sync model!')
             self.flag = True
             # TODO change back
             if self.version > 1:
