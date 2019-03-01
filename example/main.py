@@ -185,9 +185,10 @@ def init_server(args):
     # gradient_warehouse = GradientWarehouse(worker_num=args.world_size, model=model)
     threads_num = dist.get_world_size() - 1
     # mp.set_start_method('spawn')
+    size_list = [i.data.numel() for i in model.parameters()]
     threads = []
     procs = []
-    global_model = ravel_model_params(AlexNet().cuda(), cuda=True)
+    global_model = ravel_model_params(model, cuda=True)
     global_model.share_memory_()
     synced_model = global_model.clone()
     synced_model.share_memory_()
@@ -197,17 +198,17 @@ def init_server(args):
     # print(shared_list)
     for i in range(1, threads_num + 1):
         # listener = GradientMessageListener(model_size=ravel_model_params(model).numel(), source=i)
-        # share_tensor = shared_tensors[i - 1]
-        # share_tensor.share_memory_()
+        share_tensor = synced_model.clone()
+        share_tensor.share_memory_()
         share_queue_recv = mp.Queue()
         share_queue_send = mp.Queue()
-        th = GradientServer(share_queue_recv, share_queue_send,
+        th = GradientServer(share_tensor, share_queue_recv, share_queue_send,
                             model_size=ravel_model_params(model).numel(), source=i)
         th.start()
-        p = GradientExecutor(share_queue_recv, share_queue_send, shared_list, rank=i,
+        p = GradientExecutor(share_tensor, share_queue_recv, share_queue_send, shared_list, rank=i,
                              worker_num=args.world_size,
                              global_model=global_model,
-                             synced_model=synced_model)
+                             synced_model=synced_model, size_list=size_list)
         p.start()
         threads.append(th)
         procs.append(p)
@@ -238,7 +239,7 @@ if __name__ == "__main__":
     parser.add_argument('--port', type=str, default='29500', help='port on master node to communicate with')
     args = parser.parse_args()
     print(args)
-    if args.cuda:
+    if args.cuda and not args.server:
         if socket.gethostname() == 'yan-pc':
             os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 1)
         else:

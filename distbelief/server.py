@@ -2,6 +2,7 @@
 """
 Parameter server for distbelief
 """
+import time
 
 import logging
 import threading
@@ -10,8 +11,7 @@ import torch.optim
 from torch.multiprocessing import Process
 
 from distbelief.utils.messaging import MessageCode, MessageListener, send_message, GSMessageCode
-from distbelief.utils.serialization import ravel_model_params, server_gradient_filter, unravel_sparse_gradient, \
-    ravel_sparse_gradient
+from distbelief.utils.serialization import ravel_model_params, server_gradient_filter, ravel_sparse_gradient
 
 _LOGGER = logging.getLogger(__name__)
 cond = threading.Condition()
@@ -42,23 +42,12 @@ class ParameterServer(MessageListener):
             self.parameter_shard.add_(parameter)
 
 
-#
-# class GradientWarehouse2:
-#     """Warehouse for gradient, store multiple version of gradient"""
-#
-#     def __init__(self, version_num=10, worker_num=3, model=None):
-#         self.gradient_storage = {}
-#         self.gradient_storage_state = {}
-
-# un_synced_worker = set()
-
-
 class GradientExecutor(Process):
     """GradientExecutor"""
 
-    def __init__(self, shared_queue_recv, shared_queue_send, shared_list, rank=0, worker_num=None,
+    def __init__(self, share_tensor, shared_queue_recv, shared_queue_send, shared_list, rank=0, worker_num=None,
                  global_model=None,
-                 synced_model=None):
+                 synced_model=None, size_list=None):
         super().__init__()
         _LOGGER.info("Creating GradientExecutor")
         print("Creating GradientExecutor")
@@ -69,7 +58,7 @@ class GradientExecutor(Process):
         self.synced_model = synced_model
         self.synced_version = 0
         self.acc_send_grad = synced_model.clone().zero_()
-        self.shared_gradient = self.acc_send_grad.cpu()
+        self.shared_tensor = share_tensor
         self.shared_queue_recv = shared_queue_recv
         self.shared_queue_send = shared_queue_send
         self.shared_list = shared_list
@@ -77,6 +66,7 @@ class GradientExecutor(Process):
         self.rank = rank
         self.sync_worker_model(1)
         self.node_gradient = {}
+        self.size_list = size_list
 
     def sync_worker_model(self, version):
         self.send_message(self.synced_model, GSMessageCode.ModelUpdate, version)
@@ -112,7 +102,8 @@ class GradientExecutor(Process):
             send_message(GSMessageCode.ModelUpdate, self.global_model, dst=sender,
                          gradient_version=gradient_version)
         elif message_code == GSMessageCode.SparseGradientUpdate:
-            parameter = unravel_sparse_gradient(parameter)
+            start = time.time()
+            # parameter = unravel_sparse_gradient(parameter)
             agg_gradient, new_version = self.update(sender, gradient_version, parameter)
             if sender == 1 and self.max_version % 150 is 1 and gradient_version > 20:
                 self.sync_model()
@@ -124,11 +115,14 @@ class GradientExecutor(Process):
                 self.shared_list[self.rank - 1] = 0
             else:
                 send_grad = agg_gradient.add(-1, self.acc_send_grad)
-                server_gradient_filter(send_grad, rate=0.01)
+                send_grad = server_gradient_filter(self.size_list, send_grad, rate=0.01)
+                self.send_message(ravel_sparse_gradient(send_grad), GSMessageCode.SparseGradientUpdate,
+                                  gradient_version)
                 self.acc_send_grad.add_(send_grad)
-                # print('ready to send grad',send_grad)
-                send_grad = ravel_sparse_gradient(send_grad)
-                self.send_message(send_grad, GSMessageCode.SparseGradientUpdate, gradient_version)
+                # send_grad =
+                end = time.time()
+                print('server cal cost time : %f' % (end - start))
+
 
         else:
             raise Exception('GSMessageCode not implemented')
@@ -139,6 +133,9 @@ class GradientExecutor(Process):
     def run(self):
         while 1:
             recv = self.shared_queue_recv.get()
-            print('received', recv)
-            self.receive(recv[0], recv[1], recv[2], recv[3].cuda())
-            print('Process %d is running' % self.rank)
+            # print('received', recv)
+            print('end', time.time())
+            # self.receive(recv[0], recv[1], recv[2], recv[3])
+            # time.sleep(0.005)
+            self.receive(recv[0], recv[1], recv[2], self.shared_tensor)
+            # print('Process %d is running' % self.rank)

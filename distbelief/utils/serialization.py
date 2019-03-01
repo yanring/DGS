@@ -4,7 +4,6 @@ import torch
 
 # from utils import messaging
 # from example.main import transforms
-from example.models import AlexNet
 
 # model = AlexNet().cuda()
 
@@ -138,17 +137,20 @@ def worker_gradient_filter(net, rate=0.01):
     # print(end - start)
 
 
-def server_gradient_filter(gradients, rate=0.01):
-    net = AlexNet()
+def server_gradient_filter(size_list, gradients, rate=0.01):
+    # print('gradients', gradients)
     current_index = 0
-    for param in net.parameters():
-        numel = param.data.numel()
+    for size in size_list:
+        numel = size
         temp = gradients[current_index:current_index + numel]
         current_index += numel
         topn = torch.topk(abs(temp), int(temp.nelement() * rate) if int(temp.nelement() * rate) != 0 else 1)
         threshold = float(topn[0][-1])
+        # topn = torch.kthvalue(abs(temp), int(size * (1 - rate)))
+        # threshold = float(topn[0])
         if threshold > 0:
             temp[abs(temp) < threshold] = 0
+    return gradients
 
 
 def unravel_model_grad(model, parameter_update):

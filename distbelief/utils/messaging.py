@@ -10,7 +10,7 @@ from enum import Enum
 from multiprocessing.managers import BaseManager
 from threading import Thread
 
-from distbelief.utils.serialization import ravel_model_params
+from distbelief.utils.serialization import ravel_model_params, unravel_sparse_gradient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -234,8 +234,13 @@ class GradientMessageListener(Thread):
         else:
             time.sleep(10)
             print('queue init in th')
-            self.manager = QueueManager(address=('10.88.2.8', 5000), authkey=b'abc')
-        self.manager.connect()
+            self.manager = QueueManager(address=('10.88.2.3', 5000), authkey=b'abc')
+        try:
+            self.manager.connect()
+        except Exception as e:
+            print(e)
+            time.sleep(10)
+            self.manager.connect()
         send_queue = eval('self.manager.from%dto0' % dist.get_rank())()
         QueueManager.send_queue_list.append(send_queue)
         recv_queue = eval('self.manager.from0to%d' % dist.get_rank())()
@@ -245,21 +250,24 @@ class GradientMessageListener(Thread):
 
 
 class GradientServer(GradientMessageListener):
-    def __init__(self, shared_queue_recv, shared_queue_send, model_size, source=0):
+    def __init__(self, share_tensor, shared_queue_recv, shared_queue_send, model_size, source=0):
         self.running = True
         print('Creating GradientMessageListener %d' % source)
         self.shared_queue_recv = shared_queue_recv
         self.shared_queue_send = shared_queue_send
+        self.shared_gradient = share_tensor
+        # self.shared_gradient.share_memory_()
+        self._start = None
+        self._end = None
         super().__init__(model_size, source)
 
     def receive(self, sender, message_code, gradient_version, parameter):
         # put gradient update to queue
-        # if message_code == GSMessageCode.SparseGradientUpdate:
-        #     self.shared_gradient.copy_(unravel_sparse_gradient(parameter))
-        # else:
-        #     self.shared_gradient.copy_(parameter)
-        self.shared_queue_recv.put([sender, message_code, gradient_version, parameter])
-        # self.shared_queue_recv.put(self.shared_gradient)
+        if message_code == GSMessageCode.SparseGradientUpdate:
+            self.shared_gradient.copy_(unravel_sparse_gradient(parameter))
+        else:
+            self.shared_gradient.copy_(parameter)
+        self.shared_queue_recv.put([sender, message_code, gradient_version])
 
     def send_message(self, payload, message_code, gradient_version=None):
         """Sends a message to a destination
@@ -279,7 +287,7 @@ class GradientServer(GradientMessageListener):
     def run(self):
         # for sparse gradient transmission
         _LOGGER.info("Started Running!")
-        print('get message from %d' % self.source)
+        # print('get message from %d' % self.source)
         send_info = self.shared_queue_send.get()
         self.send_message(send_info[0], send_info[1], gradient_version=send_info[2])
         while self.running:
@@ -287,6 +295,7 @@ class GradientServer(GradientMessageListener):
             # for size in tail(self.size_filename):
             while True:
                 size = QueueManager.get_size(self.source)
+                self._start = time.time()
                 if dist.get_rank() == 0:
                     print('RECEIVING MESSAGE %dto%d.size:%d,' % (
                         self.source, dist.get_rank(), size))
@@ -297,12 +306,16 @@ class GradientServer(GradientMessageListener):
                     print('Exception :', e)
                     time.sleep(0.5)
                     continue
-                self.m_parameter = self.m_parameter.cuda()
+                # self.m_parameter = self.m_parameter.cuda()
+                # print('start',time.time())
+
                 self.receive(int(self.m_parameter[0].item()),
                              GSMessageCode(self.m_parameter[1].item()),
                              int(self.m_parameter[2].item()),
                              self.m_parameter[3:])
                 send_info = self.shared_queue_send.get()
+                self._end = time.time()
+                print('server cal+messaging cost time : %f' % (self._end - self._start))
                 self.send_message(send_info[0], send_info[1], gradient_version=send_info[2])
 
 
