@@ -1,5 +1,22 @@
 # working on 
 # Gradient Server
-Implementing Google's DistBelief paper.
 
-	问题背景：传统的异步并行在低带宽的情况下，通信耗时的增加会导致模型的训练速度变慢，并且延迟梯度的增多还会导致模型的收敛性不如以往。
+- Background: In the case of low bandwidth, the communication time consumption of A-SGD will result in
+
+slower training of the model, and the increase of staleness will result in the convergence of the model is
+
+not guaranteed.
+
+- Basic idea: Temporary confidential.
+
+- Experimental results: Implemented ParameterServer using distributed API of PyTorch. Train AlexNet at
+
+100Mbps bandwidth. Our new training mechanism is 10 times faster than the traditional A-SGD and has
+
+better convergence effect under the same number of iterations.
+
+- Further optimization: Accelerate the server with multi-process computing and multi-thread communication,
+
+which solves the performance bottleneck caused by the gradient sparse operation. Add a "pseudo-
+
+synchronization" mechanism to ensure convergence.
