@@ -1,4 +1,4 @@
-# working on 
+# Developing... 
 # Gradient Server
 
 - Background: In the case of low bandwidth, the communication time consumption of A-SGD will result in slower training of the model, and the increase of staleness will result in the convergence of the model is not guaranteed.
