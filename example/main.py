@@ -7,22 +7,20 @@ from multiprocessing import Manager
 
 WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname('main.py')))
 sys.path.append(WORKPATH)
-from distbelief.utils.messaging import ModelSize, GradientServer
+from distbelief.utils.messaging import GradientServer
 from distbelief.utils.serialization import ravel_model_params
 
-from distbelief.utils import messaging, serialization
+from distbelief.utils import messaging, constant
 
 import argparse
-import torch
 import torchvision
 import torchvision.transforms as transforms
-import torch.nn.functional as F
 import torch.distributed as dist
 from torch.utils.data.distributed import DistributedSampler
 from distbelief.optim import GradientSGD
 
 from datetime import datetime
-from example.models import AlexNet
+from example.models import *
 from sklearn.metrics import classification_report, accuracy_score
 import pandas as pd
 
@@ -30,8 +28,8 @@ import torch.optim as optim
 from distbelief.server import GradientExecutor
 import torch.multiprocessing as mp
 
-
-# model = AlexNet().cuda()
+net = ResNet18()
+constant.MODEL_SIZE = ravel_model_params(net)
 
 
 def get_dataset(args, transform):
@@ -56,6 +54,8 @@ def get_dataset(args, transform):
 
 
 def main(args):
+    global net
+
     logs = []
 
     transform = transforms.Compose([
@@ -64,19 +64,14 @@ def main(args):
     ])
 
     trainloader, testloader = get_dataset(args, transform)
-    net = AlexNet()
-    serialization.current_model_size = ModelSize.AlexNet
-    # net = ResNet18()
     if args.cuda:
         net = net.cuda()
-    # net.share_memory()
-    # ResNet()
 
     if args.no_distributed:
-        optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0)
+        optimizer = optim.SGD(net.parameters(), lr=args.lr)
     else:
         print('distributed model')
-        optimizer = GradientSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
+        optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net)
         # optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=1, verbose=True, min_lr=1e-5, cooldown=1,
                                                      factor=0.25)
@@ -86,6 +81,7 @@ def main(args):
 
     for epoch in range(args.epochs):  # loop over the dataset multiple times
         print("Training for epoch {}".format(epoch))
+        net.train()
         # set distributed_sampler.epoch to shuffle data.
         trainloader.sampler.set_epoch(epoch)
         start = time.time()
@@ -97,15 +93,13 @@ def main(args):
                 inputs, labels = inputs.cuda(), labels.cuda()
 
             # zero the parameter gradients
-            # optimizer.zero_grad()
+            optimizer.zero_grad()
+
             # forward + backward + optimize
             outputs = net(inputs)
             loss = F.cross_entropy(outputs, labels)
             loss.backward()
-            # paralist = worker_gradient_filter(net)
             optimizer.step()
-            # for para1, para2 in zip(paralist, net.parameters()):
-            #     para2.grad.data = para1
             _, predicted = torch.max(outputs, 1)
             accuracy = accuracy_score(predicted, labels)
 
@@ -124,7 +118,7 @@ def main(args):
             logs.append(log_obj)
         if True:  # print every n mini-batches
             end = time.time()
-            print('minibatch cost :%f' % ((end - start) / (781 / dist.get_world_size())))
+            print('minibatch cost :%f, time cost: %f' % ((end - start) / (781 / (args.world_size - 1)), (end - start)))
             logs[-1]['test_loss'], logs[-1]['test_accuracy'] = evaluate(net, testloader, args)
             print("Timestamp: {timestamp} | "
                   "Iteration: {iteration:6} | "
@@ -177,18 +171,18 @@ def evaluate(net, testloader, args, verbose=False):
 
 
 def init_server(args):
-    # import torch.multiprocessing as mp
-    model = AlexNet().cuda()
-    # model = ResNet18()
+    global net
+    if args.cuda:
+        net = net.cuda()
     # if messaging.isCUDA:
     #     model.cuda()
     # gradient_warehouse = GradientWarehouse(worker_num=args.world_size, model=model)
     threads_num = dist.get_world_size() - 1
     # mp.set_start_method('spawn')
-    size_list = [i.data.numel() for i in model.parameters()]
+    size_list = [i.data.numel() for i in net.parameters()]
     threads = []
     procs = []
-    global_model = ravel_model_params(model, cuda=True)
+    global_model = ravel_model_params(net, cuda=True)
     global_model.share_memory_()
     synced_model = global_model.clone()
     synced_model.share_memory_()
@@ -203,7 +197,7 @@ def init_server(args):
         share_queue_recv = mp.Queue()
         share_queue_send = mp.Queue()
         th = GradientServer(share_tensor, share_queue_recv, share_queue_send,
-                            model_size=ravel_model_params(model).numel(), source=i)
+                            model_size=ravel_model_params(net).numel(), source=i)
         th.start()
         p = GradientExecutor(share_tensor, share_queue_recv, share_queue_send, shared_list, rank=i,
                              worker_num=args.world_size,
@@ -220,7 +214,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Distbelief training example')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                         help='input batch size for training (default: 64)')
-    parser.add_argument('--test-batch-size', type=int, default=10000, metavar='N',
+    parser.add_argument('--test-batch-size', type=int, default=200, metavar='N',
                         help='input batch size for testing (default: 10000)')
     parser.add_argument('--epochs', type=int, default=20, metavar='N', help='number of epochs to train (default: 20)')
     parser.add_argument('--lr', type=float, default=0.1, metavar='LR', help='learning rate (default: 0.1)')

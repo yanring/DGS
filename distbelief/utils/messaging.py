@@ -234,7 +234,7 @@ class GradientMessageListener(Thread):
         else:
             time.sleep(10)
             print('queue init in th')
-            self.manager = QueueManager(address=('10.88.2.3', 5000), authkey=b'abc')
+            self.manager = QueueManager(address=('10.88.2.6', 5000), authkey=b'abc')
         try:
             self.manager.connect()
         except Exception as e:
@@ -278,10 +278,10 @@ class GradientServer(GradientMessageListener):
         # payload = self.shared_gradient
         size = str(payload.numel())
         payload = torch.cat((m_parameter, payload))
+        QueueManager.put_size(self.source, size)
         if dist.get_rank() == 0:
             print('%s SENDING MESSAGE %s gradient_version %d, %dto%d.size:%d' % (
                 str(time.time()), message_code, gradient_version, dist.get_rank(), self.source, payload.numel()))
-        QueueManager.put_size(self.source, size)
         dist.isend(tensor=payload, dst=self.source)
 
     def run(self):
@@ -314,9 +314,9 @@ class GradientServer(GradientMessageListener):
                              int(self.m_parameter[2].item()),
                              self.m_parameter[3:])
                 send_info = self.shared_queue_send.get()
+                self.send_message(send_info[0], send_info[1], gradient_version=send_info[2])
                 self._end = time.time()
                 print('server cal+messaging cost time : %f' % (self._end - self._start))
-                self.send_message(send_info[0], send_info[1], gradient_version=send_info[2])
 
 
 class QueueManager(BaseManager):
@@ -353,7 +353,7 @@ def send_message(message_code, payload, dst=0, gradient_version=None):
     """Sends a message to a destination
     Concatenates both the message code and destination with the payload into a single tensor and then sends that as a tensor
     """
-    _LOGGER.info("SENDING MESSAGE: {} RANK: {}".format(message_code, dist.get_rank()))
+    # _LOGGER.info("SENDING MESSAGE: {} RANK: {}".format(message_code, dist.get_rank()))
     m_parameter = torch.Tensor([dist.get_rank(), message_code.value, gradient_version])
     # print(m_parameter.size(), payload.size())
     if payload.is_cuda:

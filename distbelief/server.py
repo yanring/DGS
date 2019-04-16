@@ -11,7 +11,7 @@ import torch.optim
 from torch.multiprocessing import Process
 
 from distbelief.utils.messaging import MessageCode, MessageListener, send_message, GSMessageCode
-from distbelief.utils.serialization import ravel_model_params, server_gradient_filter, ravel_sparse_gradient
+from distbelief.utils.serialization import ravel_model_params, ravel_sparse_gradient
 
 _LOGGER = logging.getLogger(__name__)
 cond = threading.Condition()
@@ -67,6 +67,8 @@ class GradientExecutor(Process):
         self.sync_worker_model(1)
         self.node_gradient = {}
         self.size_list = size_list
+        self.agg_gradient = None
+        self.send_grad = self.acc_send_grad.clone()
 
     def sync_worker_model(self, version):
         self.send_message(self.synced_model, GSMessageCode.ModelUpdate, version)
@@ -86,12 +88,11 @@ class GradientExecutor(Process):
 
         self.global_model.add_(-1, gradient_update)
 
-        agg_gradient = self.global_model.add(-1, self.synced_model)
+        self.agg_gradient = self.global_model.add(-1, self.synced_model)
 
-        return agg_gradient, version
+        return self.agg_gradient, version
 
     def receive(self, sender, message_code, gradient_version, parameter):
-        # global un_synced_worker
         print("Processing message: {} from sender {} gradient version {}".format(message_code.name,
                                                                                  sender,
                                                                                  gradient_version))
@@ -99,12 +100,12 @@ class GradientExecutor(Process):
 
         if message_code == GSMessageCode.GradientUpdate:
             self.update(sender, gradient_version, parameter)
-            send_message(GSMessageCode.ModelUpdate, self.global_model, dst=sender,
-                         gradient_version=gradient_version)
+            self.send_message(self.global_model, GSMessageCode.ModelUpdate,
+                              gradient_version=gradient_version)
         elif message_code == GSMessageCode.SparseGradientUpdate:
             start = time.time()
             # parameter = unravel_sparse_gradient(parameter)
-            agg_gradient, new_version = self.update(sender, gradient_version, parameter)
+            new_version = self.update(sender, gradient_version, parameter)
             if sender == 1 and self.max_version % 150 is 1 and gradient_version > 20:
                 self.sync_model()
                 for i in range(1, self.worker_num):
@@ -114,16 +115,14 @@ class GradientExecutor(Process):
                 self.sync_worker_model(gradient_version)
                 self.shared_list[self.rank - 1] = 0
             else:
-                send_grad = agg_gradient.add(-1, self.acc_send_grad)
-                send_grad = server_gradient_filter(self.size_list, send_grad, rate=0.01)
-                self.send_message(ravel_sparse_gradient(send_grad), GSMessageCode.SparseGradientUpdate,
-                                  gradient_version)
-                self.acc_send_grad.add_(send_grad)
-                # send_grad =
+                self.send_grad = self.agg_gradient.add(-1, self.acc_send_grad)
+                # self.send_grad = server_gradient_filter(self.size_list, self.send_grad, rate=0.015)
                 end = time.time()
                 print('server cal cost time : %f' % (end - start))
-
-
+                self.send_message(ravel_sparse_gradient(self.send_grad), GSMessageCode.SparseGradientUpdate,
+                                  gradient_version)
+                self.acc_send_grad.add_(self.send_grad)
+                # send_grad =
         else:
             raise Exception('GSMessageCode not implemented')
 

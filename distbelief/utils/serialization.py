@@ -71,48 +71,36 @@ def gradient_filter(param):
     return threshold
 
 
-#
-# def mp_gradient_filter(net):
-#     import torch.multiprocessing as mp
-#     start = time.time()
-#     # res = list(map(gradient_filter, net.parameters()))
-#     pool = mp.Pool(processes=4)
-#     a = [i.grad for i in net.parameters()]
-#     pool.map(gradient_filter, a)
-#     # # for i in net.parameters():
-#     #     # pool.apply(gradient_filter,(i.grad.data,))
-#     pool.close()
-#     pool.join()
-#     # print('ddddddddddddddddddddone')
-#     # for param,threshold in zip(net.parameters(),res):
-#     #     print(abs(param.grad.data).sum())
-#     # param.grad.data = torch.where(param<threshold,param,torch.full_like(param, 0))
-#     # param.grad.data[abs(param.grad.data) < threshold] = 0
-#     end = time.time()
-#     # print('time:',end - start)
-
-
-def worker_gradient_executor(net, payload, rate=0.01, lr=0.1):
-    '''
+def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, momentum=None):
+    """
+    :param momentum:
+    :param lr:
+    :param v_kt:
+    :param payload:
+    :param u_kt:
     :param net: model
     :param rate: compression rate
     :return: gradients which lager than threshold
-    '''
+    """
     start = time.time()
     current_index = 0
-    m_parameter = payload
+    u_kt.mul_(momentum)
     for param in net.parameters():
         numel = param.data.numel()
-        m_parameter[current_index:current_index + numel].copy_(param.grad.data.view(-1))
-        temp = m_parameter[current_index:current_index + numel]
-        topn = torch.topk(abs(temp), int(temp.nelement() * rate) if int(temp.nelement() * rate) != 0 else 1)
+        layer_u_kt = u_kt[current_index:current_index + numel]
+        layer_v_kt = v_kt[current_index:current_index + numel]
+        layer_u_kt.add_(param.grad.data.view(-1))
+        layer_v_kt.add_(layer_u_kt)
+        topn = torch.topk(abs(layer_v_kt),
+                          int(layer_v_kt.nelement() * rate) if int(layer_v_kt.nelement() * rate) != 0 else 1)
         threshold = float(topn[0][-1])
-        temp[abs(temp) <= threshold] = 0
-        param.grad.data[abs(param.grad.data) > threshold] = 0
+        mask = (abs(layer_v_kt) > threshold).float()
+        payload[current_index:current_index + numel].copy_(layer_v_kt.mul(mask))
+        layer_v_kt.mul_(1 - mask)
+        layer_u_kt.mul_(1 - mask)
         current_index += numel
-        # paralist.append(temp)
     end = time.time()
-    return m_parameter.mul_(lr)
+    return payload.mul_(lr)
 
 
 def worker_gradient_filter(net, rate=0.01):
@@ -189,6 +177,8 @@ def unravel_sparse_gradient(sparse_gradient):
     split = int(len(sparse_gradient) / 2)
     i = sparse_gradient[:split]
     v = sparse_gradient[split:]
-    dense_gradient = torch.sparse.FloatTensor(i.reshape(1, -1).long(), v, torch.Size([2472266])).to_dense().cuda()
+    from distbelief.utils import constant
+    dense_gradient = torch.sparse.FloatTensor(i.reshape(1, -1).long(), v,
+                                              torch.Size([constant.MODEL_SIZE])).to_dense().cuda()
     # print(dense_gradient.sum())
     return dense_gradient

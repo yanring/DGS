@@ -5,7 +5,6 @@ import logging
 import os
 import threading
 import torch.distributed as dist
-from datetime import datetime
 from queue import Queue
 from torch.optim.optimizer import Optimizer, required
 
@@ -49,7 +48,7 @@ class GradientListener(GradientMessageListener):
             send_message(GSMessageCode.ModelUpdate, model, dst=0, gradient_version=0)
             print('send model to server')
         elif message_code == GSMessageCode.ModelUpdate:
-            print('sync model!', gradient_version, ' ', datetime.now(), ' synced model :', parameter.sum())
+            # print('sync model!', gradient_version, ' ', datetime.now(), ' synced model :', parameter.sum())
             unravel_model_params(self.model, parameter)
             self.version = gradient_version
             self.flag = True
@@ -62,7 +61,7 @@ class GradientListener(GradientMessageListener):
 class GradientSGD(Optimizer):
     """GradientSGD"""
 
-    def __init__(self, params, lr=required, n_push=0, n_pull=0, model=required):
+    def __init__(self, params, lr=required, model=required):
         """
         :param params:
         :param lr:
@@ -76,6 +75,9 @@ class GradientSGD(Optimizer):
         defaults = dict(lr=lr, )
         self.model = model
         self.filter_gradient = ravel_model_params(model)
+        self.momentum = 0.5
+        self.v_kt = self.filter_gradient.clone().zero_()
+        self.u_kt = self.filter_gradient.clone().zero_()
         self.idx = 0
         self.version = 0
         self.queue = Queue(maxsize=1)
@@ -98,10 +100,6 @@ class GradientSGD(Optimizer):
         if not self.listener.flag:
             time.sleep(1)
             return loss
-        # increase version No.
-        # self.version += 1
-        # if dist.get_rank() == 1:
-        #     time.sleep(0.01)
 
         # get the lr
         lr = self.param_groups[0]['lr']
@@ -114,13 +112,13 @@ class GradientSGD(Optimizer):
         #              gradient_version=self.listener.version + 1)
 
         # COMPRESSION
-        raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, rate=0.01, lr=lr)
+        raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, self.u_kt, self.v_kt, rate=0.02,
+                                                     lr=lr, momentum=self.momentum)
         sparse_gradient = ravel_sparse_gradient(raveled_gradients)
         send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst=0,
                      gradient_version=self.listener.version + 1)
 
         # reset gradient version
         self.version = self.queue.get()
-        # print(self.version)
         self.idx += 1
         return loss
