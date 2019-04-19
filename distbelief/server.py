@@ -116,7 +116,7 @@ class GradientExecutor(Process):
                 self.shared_list[self.rank - 1] = 0
             else:
                 self.send_grad = self.agg_gradient.add(-1, self.acc_send_grad)
-                # self.send_grad = server_gradient_filter(self.size_list, self.send_grad, rate=0.015)
+                # self.send_grad = server_gradient_filter(self.size_list, self.send_grad, rate=0.01)
                 end = time.time()
                 print('server cal cost time : %f' % (end - start))
                 self.send_message(ravel_sparse_gradient(self.send_grad), GSMessageCode.SparseGradientUpdate,

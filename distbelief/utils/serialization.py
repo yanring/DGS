@@ -2,6 +2,8 @@ import time
 
 import torch
 
+from distbelief.utils import constant
+
 # from utils import messaging
 # from example.main import transforms
 
@@ -91,8 +93,14 @@ def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, moment
         layer_v_kt = v_kt[current_index:current_index + numel]
         layer_u_kt.add_(param.grad.data.view(-1))
         layer_v_kt.add_(layer_u_kt)
-        topn = torch.topk(abs(layer_v_kt),
-                          int(layer_v_kt.nelement() * rate) if int(layer_v_kt.nelement() * rate) != 0 else 1)
+        k = int(layer_v_kt.nelement() * rate) if int(layer_v_kt.nelement() * rate) != 0 else 1
+        try:
+            topn = torch.topk(abs(layer_v_kt), k)
+        except Exception as e:
+            print(e)
+            print(k, layer_v_kt.nelement())
+            print(layer_v_kt)
+            topn = [[1]]
         threshold = float(topn[0][-1])
         mask = (abs(layer_v_kt) > threshold).float()
         payload[current_index:current_index + numel].copy_(layer_v_kt.mul(mask))
@@ -177,8 +185,12 @@ def unravel_sparse_gradient(sparse_gradient):
     split = int(len(sparse_gradient) / 2)
     i = sparse_gradient[:split]
     v = sparse_gradient[split:]
-    from distbelief.utils import constant
-    dense_gradient = torch.sparse.FloatTensor(i.reshape(1, -1).long(), v,
-                                              torch.Size([constant.MODEL_SIZE])).to_dense().cuda()
+    size = torch.Size([constant.MODEL_SIZE])
+    try:
+        dense_gradient = torch.sparse.FloatTensor(i.reshape(1, -1).long(), v, size).to_dense().cuda()
+    except Exception as e:
+        print(e)
+        print(size, constant.MODEL_SIZE, i[:20])
+        dense_gradient = torch.FloatTensor(size)
     # print(dense_gradient.sum())
     return dense_gradient

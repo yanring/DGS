@@ -112,7 +112,7 @@ class GradientSGD(Optimizer):
         #              gradient_version=self.listener.version + 1)
 
         # COMPRESSION
-        raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, self.u_kt, self.v_kt, rate=0.02,
+        raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, self.u_kt, self.v_kt, rate=0.01,
                                                      lr=lr, momentum=self.momentum)
         sparse_gradient = ravel_sparse_gradient(raveled_gradients)
         send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst=0,

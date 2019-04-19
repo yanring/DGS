@@ -228,9 +228,12 @@ class GradientMessageListener(Thread):
         # time.sleep(1)
         QueueManager.register('from0to%d' % dist.get_rank())
         QueueManager.register('from%dto0' % dist.get_rank())
+        time.sleep(10)
         # self.manager = QueueManager(address=(socket.gethostbyname('localhost'), 5000), authkey=b'abc')
-        if socket.gethostname() == 'yan-pc' or socket.gethostname() == 'yrx-MS-7A93':
-            self.manager = QueueManager(address=('172.18.166.108', 5000), authkey=b'abc')
+        if socket.gethostname() == 'yan-pc' or socket.gethostname() == 'yrx-MS-7A93' or 'ubuntu' in socket.gethostname():
+            print('queue init in 522')
+            # self.manager = QueueManager(address=('172.18.166.108', 5000), authkey=b'abc')
+            self.manager = QueueManager(address=('192.168.3.104', 5000), authkey=b'abc')
         else:
             time.sleep(10)
             print('queue init in th')
@@ -334,7 +337,7 @@ class QueueManager(BaseManager):
         # exec('recv_queue = cls.manager.from%dto%d()' % (source, target))
         res = None
         try:
-            res = recv_queue.get(timeout=40)
+            res = recv_queue.get(timeout=400)
         except queue.Empty:
             print('task queue is empty')
         # print('RECV ', res, type(recv_queue), recv_queue)
