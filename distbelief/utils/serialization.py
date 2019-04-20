@@ -187,7 +187,7 @@ def unravel_sparse_gradient(sparse_gradient):
     v = sparse_gradient[split:]
     size = torch.Size([constant.MODEL_SIZE])
     try:
-        dense_gradient = torch.sparse.FloatTensor(i.reshape(1, -1).long(), v, size).to_dense().cuda()
+        dense_gradient = torch.sparse.FloatTensor(i.reshape(1, -1).long(), v, size).to_dense()
     except Exception as e:
         print(e)
         print(size, constant.MODEL_SIZE, i[:20])

@@ -196,7 +196,7 @@ class GradientMessageListener(Thread):
                     print('Exception :', e)
                     time.sleep(0.5)
                     continue
-                self.m_parameter = self.m_parameter.cuda()
+                self.m_parameter = self.m_parameter
                 self.receive(int(self.m_parameter[0].item()),
                              GSMessageCode(self.m_parameter[1].item()),
                              int(self.m_parameter[2].item()),
@@ -233,7 +233,7 @@ class GradientMessageListener(Thread):
         if socket.gethostname() == 'yan-pc' or socket.gethostname() == 'yrx-MS-7A93' or 'ubuntu' in socket.gethostname():
             print('queue init in 522')
             # self.manager = QueueManager(address=('172.18.166.108', 5000), authkey=b'abc')
-            self.manager = QueueManager(address=('192.168.3.104', 5000), authkey=b'abc')
+            self.manager = QueueManager(address=('192.168.3.100', 5000), authkey=b'abc')
         else:
             time.sleep(10)
             print('queue init in th')

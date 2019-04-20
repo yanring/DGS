@@ -39,7 +39,7 @@ class GradientListener(GradientMessageListener):
             self.version = gradient_version
             self.queue.put(gradient_version)
         elif message_code == GSMessageCode.SparseGradientUpdate:
-            parameter = unravel_sparse_gradient(parameter)
+            parameter = unravel_sparse_gradient(parameter).cuda()
             update_model_params(self.model, parameter, -1)
             self.version = gradient_version
             self.queue.put(gradient_version)

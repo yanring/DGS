@@ -186,7 +186,6 @@ def init_server(args):
     global net
     if args.cuda:
         net = net.cuda()
-    constant.MODEL_SIZE = ravel_model_params(net).numel()
     # if messaging.isCUDA:
     #     model.cuda()
     # gradient_warehouse = GradientWarehouse(worker_num=args.world_size, model=model)
@@ -196,10 +195,11 @@ def init_server(args):
     threads = []
     procs = []
     global_model = ravel_model_params(net, cuda=True)
+    constant.MODEL_SIZE = global_model.numel()
     del net
     global_model.share_memory_()
     synced_model = global_model.clone()
-    synced_model.share_memory_()
+    # synced_model.share_memory_()
     # shared_tensors = [synced_model.clone() for _ in range(args.world_size - 1)]
     shared_list = Manager().list([0 for _ in range(args.world_size - 1)])
 
@@ -257,7 +257,7 @@ if __name__ == "__main__":
     if args.model == 'AlexNet':
         net = AlexNet()
     elif args.model == 'ResNet18':
-        net = ResNet50()
+        net = ResNet18()
         args.test_batch_size = 200
     elif args.model == 'ResNet50':
         net = ResNet50()
