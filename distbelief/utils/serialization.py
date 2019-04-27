@@ -87,28 +87,32 @@ def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, moment
     start = time.time()
     current_index = 0
     u_kt.mul_(momentum)
+    sum = 0
     for param in net.parameters():
         numel = param.data.numel()
         layer_u_kt = u_kt[current_index:current_index + numel]
         layer_v_kt = v_kt[current_index:current_index + numel]
-        layer_u_kt.add_(param.grad.data.view(-1))
+        layer_u_kt.add_(param.grad.data.view(-1)).mul_(lr)
         layer_v_kt.add_(layer_u_kt)
-        k = int(layer_v_kt.nelement() * rate) if int(layer_v_kt.nelement() * rate) != 0 else 1
+        k = int(numel * rate) if int(numel * rate) != 0 else 1
+        topn = [[1.0]]
         try:
             topn = torch.topk(abs(layer_v_kt), k)
         except Exception as e:
             print(e)
             print(k, layer_v_kt.nelement())
-            print(layer_v_kt)
-            topn = [[1]]
+            # print(layer_v_kt)
         threshold = float(topn[0][-1])
         mask = (abs(layer_v_kt) > threshold).float()
+        # sum += mask.sum()
         payload[current_index:current_index + numel].copy_(layer_v_kt.mul(mask))
         layer_v_kt.mul_(1 - mask)
-        layer_u_kt.mul_(1 - mask)
+        # layer_u_kt.mul_(1 - mask)
         current_index += numel
     end = time.time()
-    return payload.mul_(lr)
+    if sum > 300000:
+        print(sum)
+    return payload
 
 
 def worker_gradient_filter(net, rate=0.01):

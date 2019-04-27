@@ -10,7 +10,7 @@ from enum import Enum
 from multiprocessing.managers import BaseManager
 from threading import Thread
 
-from distbelief.utils.serialization import ravel_model_params, unravel_sparse_gradient
+from distbelief.utils.serialization import ravel_model_params
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -266,11 +266,12 @@ class GradientServer(GradientMessageListener):
 
     def receive(self, sender, message_code, gradient_version, parameter):
         # put gradient update to queue
-        if message_code == GSMessageCode.SparseGradientUpdate:
-            self.shared_gradient.copy_(unravel_sparse_gradient(parameter))
-        else:
-            self.shared_gradient.copy_(parameter)
-        self.shared_queue_recv.put([sender, message_code, gradient_version])
+        # if message_code == GSMessageCode.SparseGradientUpdate:
+        #     self.shared_gradient.copy_(unravel_sparse_gradient(parameter))
+        # else:
+        #     self.shared_gradient.copy_(parameter)
+        # self.shared_queue_recv.put([sender, message_code, gradient_version])
+        self.shared_queue_recv.put([sender, message_code, gradient_version, parameter])
 
     def send_message(self, payload, message_code, gradient_version=None):
         """Sends a message to a destination

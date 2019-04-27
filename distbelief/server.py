@@ -10,8 +10,9 @@ import torch
 import torch.optim
 from torch.multiprocessing import Process
 
+from distbelief.utils import constant
 from distbelief.utils.messaging import MessageCode, MessageListener, send_message, GSMessageCode
-from distbelief.utils.serialization import ravel_model_params, ravel_sparse_gradient, server_gradient_filter
+from distbelief.utils.serialization import ravel_model_params, ravel_sparse_gradient, unravel_sparse_gradient
 
 _LOGGER = logging.getLogger(__name__)
 cond = threading.Condition()
@@ -58,7 +59,7 @@ class GradientExecutor(Process):
         self.synced_model = synced_model
         self.synced_version = 0
         self.acc_send_grad = synced_model.clone().zero_()
-        self.shared_tensor = share_tensor
+        # self.shared_tensor = share_tensor
         self.shared_queue_recv = shared_queue_recv
         self.shared_queue_send = shared_queue_send
         self.shared_list = shared_list
@@ -69,6 +70,7 @@ class GradientExecutor(Process):
         self.size_list = size_list
         self.agg_gradient = None
         self.send_grad = self.acc_send_grad.clone()
+        print(constant.MODEL_SIZE)
 
     def sync_worker_model(self, version):
         self.send_message(self.synced_model, GSMessageCode.ModelUpdate, version)
@@ -116,13 +118,21 @@ class GradientExecutor(Process):
                 self.shared_list[self.rank - 1] = 0
             else:
                 self.send_grad = self.agg_gradient.add(-1, self.acc_send_grad)
-                self.send_grad = server_gradient_filter(self.size_list, self.send_grad, rate=0.02)
-                end = time.time()
-                print('server cal cost time : %f' % (end - start))
+                # server_gradient_filter(self.size_list, self.send_grad, rate=0.01)
+                # end = time.time()
+                # print(abs(self.send_grad).sum())
+                # print('server cal cost time : %f' % (end - start))
                 self.send_message(ravel_sparse_gradient(self.send_grad), GSMessageCode.SparseGradientUpdate,
                                   gradient_version)
                 self.acc_send_grad.add_(self.send_grad)
-                # send_grad =
+            # else:
+            #     self.shared_tensor.copy_(self.agg_gradient.add(-1, self.acc_send_grad))
+            #     # server_gradient_filter(self.size_list, self.shared_tensor, rate=0.02)
+            #     end = time.time()
+            #     print('server cal cost time : %f' % (end - start))
+            #     self.send_message(torch.FloatTensor(range(1)), GSMessageCode.SparseGradientUpdate,
+            #                       gradient_version)
+            #     self.acc_send_grad.add_(self.shared_tensor)
         else:
             raise Exception('GSMessageCode not implemented')
 
@@ -134,7 +144,7 @@ class GradientExecutor(Process):
             recv = self.shared_queue_recv.get()
             # print('received', recv)
             print('end', time.time())
-            # self.receive(recv[0], recv[1], recv[2], recv[3])
-            # time.sleep(0.005)
-            self.receive(recv[0], recv[1], recv[2], self.shared_tensor)
+            if self.max_version < 20:
+                constant.MODEL_SIZE = self.global_model.numel()
+            self.receive(recv[0], recv[1], recv[2], unravel_sparse_gradient(recv[3]).cuda())
             # print('Process %d is running' % self.rank)

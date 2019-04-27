@@ -83,7 +83,6 @@ class GradientSGD(Optimizer):
         self.queue = Queue(maxsize=1)
         self.listener = GradientListener(model, self.queue)
         self.listener.start()
-
         super(GradientSGD, self).__init__(params, defaults)
 
     def step(self, closure=None):
@@ -112,7 +111,14 @@ class GradientSGD(Optimizer):
         #              gradient_version=self.listener.version + 1)
 
         # COMPRESSION
-        raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, self.u_kt, self.v_kt, rate=0.01,
+        if self.version < 781 / 4 * 3:
+            rate = 0.01
+        elif self.version < 7810 / 4 * 2:
+            rate = 0.01
+        else:
+            rate = 0.001
+        raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, self.u_kt, self.v_kt,
+                                                     rate=rate,
                                                      lr=lr, momentum=self.momentum)
         sparse_gradient = ravel_sparse_gradient(raveled_gradients)
         send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst=0,

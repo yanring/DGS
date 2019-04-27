@@ -78,7 +78,7 @@ def main(args):
     constant.MODEL_SIZE = ravel_model_params(net).numel()
 
     if args.no_distributed:
-        optimizer = optim.SGD(net.parameters(), lr=args.lr)
+        optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.5)
     else:
         print('distributed model')
         optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net)
@@ -197,9 +197,9 @@ def init_server(args):
     global_model = ravel_model_params(net, cuda=True)
     constant.MODEL_SIZE = global_model.numel()
     del net
-    global_model.share_memory_()
+    global_model = global_model.share_memory_()
     synced_model = global_model.clone()
-    # synced_model.share_memory_()
+    synced_model = synced_model.share_memory_()
     # shared_tensors = [synced_model.clone() for _ in range(args.world_size - 1)]
     shared_list = Manager().list([0 for _ in range(args.world_size - 1)])
 
@@ -207,7 +207,7 @@ def init_server(args):
     for i in range(1, threads_num + 1):
         # listener = GradientMessageListener(model_size=ravel_model_params(model).numel(), source=i)
         share_tensor = synced_model.clone()
-        share_tensor.share_memory_()
+        share_tensor = share_tensor.share_memory_()
         share_queue_recv = mp.Queue()
         share_queue_send = mp.Queue()
         th = GradientServer(share_tensor, share_queue_recv, share_queue_send,
@@ -228,9 +228,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Distbelief training example')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                         help='input batch size for training (default: 64)')
-    parser.add_argument('--test-batch-size', type=int, default=10000, metavar='N',
+    parser.add_argument('--test-batch-size', type=int, default=20000, metavar='N',
                         help='input batch size for testing (default: 10000)')
-    parser.add_argument('--epochs', type=int, default=30, metavar='N', help='number of epochs to train (default: 20)')
+    parser.add_argument('--epochs', type=int, default=40, metavar='N', help='number of epochs to train (default: 20)')
     parser.add_argument('--lr', type=float, default=0.1, metavar='LR', help='learning rate (default: 0.1)')
     parser.add_argument('--cuda', action='store_true', default=False, help='use CUDA for training')
     parser.add_argument('--log-interval', type=int, default=10, metavar='N', help='how often to evaluate and print out')
