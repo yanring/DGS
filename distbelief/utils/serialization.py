@@ -4,6 +4,7 @@ import torch
 
 # from utils import messaging
 # from example.main import transforms
+from distbelief.utils import constant
 from example.models import AlexNet
 
 # model = AlexNet().cuda()
@@ -37,6 +38,7 @@ def unravel_model_params(model, parameter_update):
     for parameter in model.parameters():
         numel = parameter.data.numel()
         size = parameter.data.size()
+        # print(numel,size)
         parameter.data.copy_(parameter_update[current_index:current_index + numel].view(size))
         current_index += numel
 
@@ -187,6 +189,7 @@ def unravel_sparse_gradient(sparse_gradient):
     split = int(len(sparse_gradient) / 2)
     i = sparse_gradient[:split]
     v = sparse_gradient[split:]
-    dense_gradient = torch.sparse.FloatTensor(i.reshape(1, -1).long(), v, torch.Size([2472266])).to_dense().cuda()
+    size = torch.Size([constant.MODEL_SIZE])
+    dense_gradient = torch.sparse.FloatTensor(i.reshape(1, -1).long(), v, size).to_dense().cuda()
     # print(dense_gradient.sum())
     return dense_gradient

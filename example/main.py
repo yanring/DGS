@@ -6,46 +6,40 @@ import socket
 
 WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname('main.py')))
 sys.path.append(WORKPATH)
-from distbelief.utils.messaging import ModelSize
+from distbelief.server import GradientServer
 from distbelief.utils.serialization import ravel_model_params
 
-from distbelief.utils import messaging, serialization
+from distbelief.utils import messaging, constant
 
 import argparse
-import torch
 import torchvision
 import torchvision.transforms as transforms
-import torch.nn.functional as F
 import torch.distributed as dist
 from torch.utils.data.distributed import DistributedSampler
 from distbelief.optim import GradientSGD
 
 from datetime import datetime
-from example.models import AlexNet
+from example.models import *
 from sklearn.metrics import classification_report, accuracy_score
 import pandas as pd
 
 import torch.optim as optim
-from distbelief.server import GradientServer
-import torch.multiprocessing as mp
+
+net = None
 
 
-# model = AlexNet().cuda()
-
-
-def get_dataset(args, transform):
+def get_dataset(args, transform_train, transform_test):
     """
-    :param dataset_name:
+    :param args:
     :param transform:
-    :param batch_size:
-    :return: iterators for the dataset
+    :return:
     """
     if args.dataset == 'MNIST':
-        trainset = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform)
-        testset = torchvision.datasets.MNIST(root='./data', train=False, download=True, transform=transform)
+        trainset = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform_train)
+        testset = torchvision.datasets.MNIST(root='./data', train=False, download=True, transform=transform_test)
     else:
-        trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
-        testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
+        trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
+        testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_test)
 
     sampler = DistributedSampler(trainset, args.world_size - 1, args.rank - 1)
     # sampler = DistributedSampler(trainset, 1, 0)
@@ -56,36 +50,46 @@ def get_dataset(args, transform):
 
 
 def main(args):
+    global net
+
     logs = []
 
-    transform = transforms.Compose([
+    # transform = transforms.Compose([
+    #     transforms.ToTensor(),
+    #     transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+    # ])
+    transform_train = transforms.Compose([
+        transforms.RandomCrop(32, padding=4),
+        transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
     ])
 
-    trainloader, testloader = get_dataset(args, transform)
-    net = AlexNet()
-    serialization.current_model_size = ModelSize.AlexNet
-    # net = ResNet18()
+    transform_test = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    ])
+    trainloader, testloader = get_dataset(args, transform_train, transform_test)
     if args.cuda:
         net = net.cuda()
-    # net.share_memory()
-    # ResNet()
+    constant.MODEL_SIZE = ravel_model_params(net).numel()
 
     if args.no_distributed:
-        optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0)
+        optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.5)
     else:
         print('distributed model')
-        optimizer = GradientSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
+        optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net)
         # optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=1, verbose=True, min_lr=1e-5, cooldown=1,
-                                                     factor=0.25)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, cooldown=1, verbose=True, factor=0.25)
+    # scheduler = MultiStepLR(optimizer, milestones=[10, 20], gamma=0.1)
 
     # train
     net.train()
 
     for epoch in range(args.epochs):  # loop over the dataset multiple times
-        print("Training for epoch {}".format(epoch))
+        # scheduler.step()
+        print("Training for epoch {}, lr={}".format(epoch, scheduler.optimizer.param_groups[0]['lr']))
+        net.train()
         # set distributed_sampler.epoch to shuffle data.
         trainloader.sampler.set_epoch(epoch)
         start = time.time()
@@ -97,15 +101,13 @@ def main(args):
                 inputs, labels = inputs.cuda(), labels.cuda()
 
             # zero the parameter gradients
-            # optimizer.zero_grad()
+            optimizer.zero_grad()
+
             # forward + backward + optimize
             outputs = net(inputs)
             loss = F.cross_entropy(outputs, labels)
             loss.backward()
-            # paralist = worker_gradient_filter(net)
             optimizer.step()
-            # for para1, para2 in zip(paralist, net.parameters()):
-            #     para2.grad.data = para1
             _, predicted = torch.max(outputs, 1)
             accuracy = accuracy_score(predicted, labels)
 
@@ -124,7 +126,7 @@ def main(args):
             logs.append(log_obj)
         if True:  # print every n mini-batches
             end = time.time()
-            print('minibatch cost :%f' % ((end - start) / (781 / dist.get_world_size())))
+            print('minibatch cost :%f, time cost: %f' % ((end - start) / (781 / (args.world_size - 1)), (end - start)))
             logs[-1]['test_loss'], logs[-1]['test_accuracy'] = evaluate(net, testloader, args)
             print("Timestamp: {timestamp} | "
                   "Iteration: {iteration:6} | "
@@ -144,7 +146,9 @@ def main(args):
         else:
             df.to_csv('log/single.csv', index_label='index')
     else:
-        df.to_csv('log/node{}.csv'.format(dist.get_rank()), index_label='index')
+        df.to_csv('log/node{}_{}_{}_{}worker.csv'.format(dist.get_rank() - 1, 'asgd',
+                                                         args.model, dist.get_world_size()),
+                  index_label='index')
 
     print('Finished Training')
 
@@ -178,7 +182,7 @@ def evaluate(net, testloader, args, verbose=False):
 
 def init_server(args):
     # import torch.multiprocessing as mp
-    model = AlexNet().cuda()
+    model = net.cuda()
     # model = ResNet18()
     # if messaging.isCUDA:
     #     model.cuda()
@@ -186,7 +190,7 @@ def init_server(args):
     threads_num = dist.get_world_size() - 1
     # mp.set_start_method('spawn')
     threads = []
-    global_model = ravel_model_params(AlexNet().cuda(), cuda=True)
+    global_model = ravel_model_params(model, cuda=True)
     # global_model.share_memory_()
     synced_model = global_model.clone()
     # synced_model.share_memory_()
@@ -205,12 +209,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Distbelief training example')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                         help='input batch size for training (default: 64)')
-    parser.add_argument('--test-batch-size', type=int, default=10000, metavar='N',
+    parser.add_argument('--test-batch-size', type=int, default=20000, metavar='N',
                         help='input batch size for testing (default: 10000)')
-    parser.add_argument('--epochs', type=int, default=20, metavar='N', help='number of epochs to train (default: 20)')
+    parser.add_argument('--epochs', type=int, default=40, metavar='N', help='number of epochs to train (default: 20)')
     parser.add_argument('--lr', type=float, default=0.1, metavar='LR', help='learning rate (default: 0.1)')
-    parser.add_argument('--num-pull', type=int, default=5, metavar='N', help='how often to pull params (default: 5)')
-    parser.add_argument('--num-push', type=int, default=5, metavar='N', help='how often to push grads (default: 5)')
     parser.add_argument('--cuda', action='store_true', default=False, help='use CUDA for training')
     parser.add_argument('--log-interval', type=int, default=10, metavar='N', help='how often to evaluate and print out')
     parser.add_argument('--no-distributed', action='store_true', default=False,
@@ -218,10 +220,12 @@ if __name__ == "__main__":
     parser.add_argument('--rank', type=int, metavar='N',
                         help='rank of current process (0 is server, 1+ is training node)')
     parser.add_argument('--world-size', type=int, default=3, metavar='N', help='size of the world')
-    parser.add_argument('--server', action='store_true', default=False, help='server node?')
+    # parser.add_argument('--server', action='store_true', default=False, help='server node?')
     parser.add_argument('--dataset', type=str, default='CIFAR10', help='which dataset to train on')
     parser.add_argument('--master', type=str, default='localhost', help='ip address of the master (server) node')
     parser.add_argument('--port', type=str, default='29500', help='port on master node to communicate with')
+    parser.add_argument('--mode', type=str, default='gradient_sgd', help='gradient_sgd or async')
+    parser.add_argument('--model', type=str, default='AlexNet', help='AlexNet, ResNet18, ResNet50')
     args = parser.parse_args()
     print(args)
     if args.cuda:
@@ -230,6 +234,16 @@ if __name__ == "__main__":
         else:
             os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 2)
         print('Using device%s, device count:%d' % (os.environ['CUDA_VISIBLE_DEVICES'], torch.cuda.device_count()))
+
+    if args.model == 'AlexNet':
+        net = AlexNet()
+    elif args.model == 'ResNet18':
+        net = ResNet18()
+        args.test_batch_size = 1000
+    elif args.model == 'ResNet50':
+        net = ResNet50()
+        args.test_batch_size = 200
+    constant.MODEL_SIZE = ravel_model_params(net.cuda()).numel()
     if not args.no_distributed:
         """ Initialize the distributed environment.
         Server and clients must call this as an entry point.
@@ -241,19 +255,21 @@ if __name__ == "__main__":
                 print('%s/sharedfile chmod success' % WORKPATH)
             except Exception as e:
                 print(e)
-        if args.server:
+        if args.rank == 0:
             import glob
 
             for infile in glob.glob(os.path.join(WORKPATH, '*.size')):
                 os.remove(infile)
-        if args.server:
-            mp.set_start_method('spawn', force=True)
+        # if args.rank == 0:
+        # mp.set_start_method('spawn', force=True)
 
         dist.init_process_group('tcp', init_method='file://%s/sharedfile' % WORKPATH, group_name='mygroup',
                                 world_size=args.world_size, rank=args.rank)
+
+        print(constant.MODEL_SIZE)
         if args.cuda:
             messaging.isCUDA = 1
-        if args.server:
+        if args.rank == 0:
             # mp.set_start_method('spawn')
             init_server(args)
     main(args)
