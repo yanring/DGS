@@ -12,7 +12,7 @@ from torch.multiprocessing import Process
 
 from distbelief.utils import constant
 from distbelief.utils.messaging import MessageCode, MessageListener, send_message, GSMessageCode
-from distbelief.utils.serialization import ravel_model_params, ravel_sparse_gradient, unravel_sparse_gradient
+from distbelief.utils.serialization import ravel_model_params, ravel_sparse_gradient
 
 _LOGGER = logging.getLogger(__name__)
 cond = threading.Condition()
@@ -59,7 +59,7 @@ class GradientExecutor(Process):
         self.synced_model = synced_model
         self.synced_version = 0
         self.acc_send_grad = synced_model.clone().zero_()
-        # self.shared_tensor = share_tensor
+        self.shared_tensor = share_tensor
         self.shared_queue_recv = shared_queue_recv
         self.shared_queue_send = shared_queue_send
         self.shared_list = shared_list
@@ -143,8 +143,8 @@ class GradientExecutor(Process):
         while 1:
             recv = self.shared_queue_recv.get()
             # print('received', recv)
-            print('end', time.time())
+            # print('end', time.time())
             if self.max_version < 20:
                 constant.MODEL_SIZE = self.global_model.numel()
-            self.receive(recv[0], recv[1], recv[2], unravel_sparse_gradient(recv[3]).cuda())
+            self.receive(recv[0], recv[1], recv[2], self.shared_tensor)
             # print('Process %d is running' % self.rank)

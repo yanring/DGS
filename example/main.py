@@ -83,14 +83,15 @@ def main(args):
         print('distributed model')
         optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net)
         # optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, verbose=True,
-                                                     factor=0.25)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, cooldown=1, verbose=True, factor=0.25)
+    # scheduler = MultiStepLR(optimizer, milestones=[10, 20], gamma=0.1)
 
     # train
     net.train()
 
     for epoch in range(args.epochs):  # loop over the dataset multiple times
-        print("Training for epoch {}".format(epoch))
+        # scheduler.step()
+        print("Training for epoch {}, lr={}".format(epoch, scheduler.optimizer.param_groups[0]['lr']))
         net.train()
         # set distributed_sampler.epoch to shuffle data.
         trainloader.sampler.set_epoch(epoch)
@@ -249,7 +250,7 @@ if __name__ == "__main__":
     print(args)
     if args.cuda:
         if socket.gethostname() == 'yan-pc':
-            os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 2)
+            os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 1)
         else:
             os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 2)
         print('Using device%s, device count:%d' % (os.environ['CUDA_VISIBLE_DEVICES'], torch.cuda.device_count()))
@@ -257,8 +258,8 @@ if __name__ == "__main__":
     if args.model == 'AlexNet':
         net = AlexNet()
     elif args.model == 'ResNet18':
-        net = ResNet18()
-        args.test_batch_size = 200
+        net = ResNet50()
+        args.test_batch_size = 1000
     elif args.model == 'ResNet50':
         net = ResNet50()
         args.test_batch_size = 200

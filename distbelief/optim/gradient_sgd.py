@@ -5,6 +5,7 @@ import logging
 import os
 import threading
 import torch.distributed as dist
+from datetime import datetime
 from queue import Queue
 from torch.optim.optimizer import Optimizer, required
 
@@ -48,7 +49,7 @@ class GradientListener(GradientMessageListener):
             send_message(GSMessageCode.ModelUpdate, model, dst=0, gradient_version=0)
             print('send model to server')
         elif message_code == GSMessageCode.ModelUpdate:
-            # print('sync model!', gradient_version, ' ', datetime.now(), ' synced model :', parameter.sum())
+            print('sync model!', gradient_version, ' ', datetime.now(), ' synced model :', parameter.sum())
             unravel_model_params(self.model, parameter)
             self.version = gradient_version
             self.flag = True
@@ -111,14 +112,14 @@ class GradientSGD(Optimizer):
         #              gradient_version=self.listener.version + 1)
 
         # COMPRESSION
-        if self.version < 781 / 4 * 3:
-            rate = 0.01
-        elif self.version < 7810 / 4 * 2:
-            rate = 0.01
-        else:
-            rate = 0.001
+        # if self.version < 781 / 4 * 3:
+        #     rate = 0.01
+        # elif self.version < 7810 / 4 * 2:
+        #     rate = 0.01
+        # else:
+        #     rate = 0.001
         raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, self.u_kt, self.v_kt,
-                                                     rate=rate,
+                                                     rate=0.1 * lr,
                                                      lr=lr, momentum=self.momentum)
         sparse_gradient = ravel_sparse_gradient(raveled_gradients)
         send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst=0,
