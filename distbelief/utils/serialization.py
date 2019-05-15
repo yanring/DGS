@@ -86,7 +86,7 @@ def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, moment
     """
     start = time.time()
     current_index = 0
-    # u_kt.mul_(momentum)
+    u_kt.mul_(momentum)
     sum = 0
     # v_kt.add_(u_kt)
     for param in net.parameters():
@@ -107,7 +107,7 @@ def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, moment
         mask = (abs(layer_u_kt) > threshold).float()
         # sum += mask.sum()
         payload[current_index:current_index + numel].copy_(layer_u_kt.mul(mask))
-        layer_u_kt.add_(layer_u_kt.mul(1 - mask))
+        layer_u_kt.copy_(layer_u_kt.mul(1 - mask).mul(1 / momentum))
         # layer_v_kt.zero_()
 
         # layer_v_kt.mul_(1 - mask)

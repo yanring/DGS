@@ -258,7 +258,7 @@ if __name__ == "__main__":
     if args.model == 'AlexNet':
         net = AlexNet()
     elif args.model == 'ResNet18':
-        net = ResNet50()
+        net = ResNet18()
         args.test_batch_size = 1000
     elif args.model == 'ResNet50':
         net = ResNet50()
