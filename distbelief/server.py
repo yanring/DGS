@@ -56,7 +56,7 @@ un_synced_worker = set()
 class GradientServer(GradientMessageListener):
     """GradientServer"""
 
-    def __init__(self, model, rank=0, worker_num=None, global_model=None, synced_model=None):
+    def __init__(self, model, rank=0, worker_num=None, global_model=None, synced_model=None, momentum=None):
         _LOGGER.info("Creating GradientServer")
         print("Creating GradientServer")
         # self.gradient_warehouse = gradient_warehouse
@@ -72,6 +72,7 @@ class GradientServer(GradientMessageListener):
         self.synced_version = 0
         self.acc_send_grad = synced_model.clone().zero_()
         self.acc_send_grad.share_memory_()
+        self.momentum = momentum
         # self.pool = mp.Pool(processes=1)
         self.net = model
         if rank == 1:
@@ -91,14 +92,16 @@ class GradientServer(GradientMessageListener):
 
     def update(self, rank, version, gradient_update):
         """
+        :param momentum:
         :param rank: rank of worker node
         :param version: version of gradient
         :param gradient_update: tensor, gradient update tensor
         :return:
         """
         print("update gradient from rank%d,version%d" % (rank, version))
-
-        self.global_model.add_(-1, gradient_update)
+        self.momentum.mul_(0.6)
+        self.momentum.add_(gradient_update)
+        self.global_model.add_(-1, self.momentum)
 
         agg_gradient = self.global_model.add(-1, self.synced_model)
 

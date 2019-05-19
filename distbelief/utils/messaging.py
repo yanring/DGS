@@ -254,7 +254,7 @@ class GradientMessageListener(Thread):
             self.manager = QueueManager(address=('192.168.3.100', 5000), authkey=b'abc')
         else:
             print('queue init in th')
-            self.manager = QueueManager(address=('10.88.2.0', 5000), authkey=b'abc')
+            self.manager = QueueManager(address=('10.88.2.3', 5000), authkey=b'abc')
         self.manager.connect()
         send_queue = eval('self.manager.from%dto0' % dist.get_rank())()
         QueueManager.send_queue_list.append(send_queue)

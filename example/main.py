@@ -193,10 +193,11 @@ def init_server(args):
     global_model = ravel_model_params(model, cuda=True)
     # global_model.share_memory_()
     synced_model = global_model.clone()
+    momentum = global_model.clone().zero_()
     # synced_model.share_memory_()
     for i in range(1, threads_num + 1):
         th = GradientServer(model=model, rank=i, worker_num=args.world_size, global_model=global_model,
-                            synced_model=synced_model)
+                            synced_model=synced_model, momentum=momentum)
         threads.append(th)
         th.start()
     for t in threads:
@@ -242,7 +243,7 @@ if __name__ == "__main__":
         args.test_batch_size = 1000
     elif args.model == 'ResNet50':
         net = ResNet50()
-        args.test_batch_size = 200
+        args.test_batch_size = 1000
     constant.MODEL_SIZE = ravel_model_params(net.cuda()).numel()
     if not args.no_distributed:
         """ Initialize the distributed environment.
