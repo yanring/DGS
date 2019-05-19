@@ -93,7 +93,7 @@ def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, moment
         numel = param.data.numel()
         layer_u_kt = u_kt[current_index:current_index + numel]
         # layer_v_kt = v_kt[current_index:current_index + numel]
-        layer_u_kt.add_(param.grad.data.view(-1).mul(lr))
+        layer_u_kt.add_(param.grad.data.view(-1))
         # layer_v_kt.add_(layer_u_kt)
         k = int(numel * rate) if int(numel * rate) != 0 else 1
         topn = [[1.0]]
@@ -106,7 +106,7 @@ def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, moment
         threshold = float(topn[0][-1])
         mask = (abs(layer_u_kt) > threshold).float()
         # sum += mask.sum()
-        payload[current_index:current_index + numel].copy_(layer_u_kt.mul(mask))
+        payload[current_index:current_index + numel].copy_(layer_u_kt.mul(mask).mul(lr))
         layer_u_kt.copy_(layer_u_kt.mul(1 - mask).mul(1 / momentum))
         # layer_v_kt.zero_()
 

@@ -150,7 +150,7 @@ def main(args):
             df.to_csv('log/single.csv', index_label='index')
     else:
         df.to_csv('log/node{}_{}_{}_{}worker.csv'.format(dist.get_rank() - 1, args.mode,
-                                                         args.model, dist.get_world_size()),
+                                                         args.model, dist.get_world_size() - 1),
                   index_label='index')
 
     print('Finished Training')
@@ -258,7 +258,7 @@ if __name__ == "__main__":
     if args.model == 'AlexNet':
         net = AlexNet()
     elif args.model == 'ResNet18':
-        net = ResNet18()
+        net = ResNet50()
         args.test_batch_size = 1000
     elif args.model == 'ResNet50':
         net = ResNet50()

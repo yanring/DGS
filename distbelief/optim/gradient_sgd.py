@@ -76,7 +76,7 @@ class GradientSGD(Optimizer):
         defaults = dict(lr=lr, )
         self.model = model
         self.filter_gradient = ravel_model_params(model)
-        self.momentum = 0.4
+        self.momentum = 0.6
         self.v_kt = self.filter_gradient.clone().zero_()
         self.u_kt = self.filter_gradient.clone().zero_()
         self.idx = 0
