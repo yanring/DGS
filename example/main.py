@@ -147,7 +147,7 @@ def main(args):
             df.to_csv('log/single.csv', index_label='index')
     else:
         df.to_csv('log/node{}_{}_{}_{}worker.csv'.format(dist.get_rank() - 1, 'asgd',
-                                                         args.model, dist.get_world_size()),
+                                                         args.model, dist.get_world_size() - 1),
                   index_label='index')
 
     print('Finished Training')
@@ -235,7 +235,7 @@ if __name__ == "__main__":
         else:
             os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 2)
         print('Using device%s, device count:%d' % (os.environ['CUDA_VISIBLE_DEVICES'], torch.cuda.device_count()))
-
+    args.model = 'AlexNet'
     if args.model == 'AlexNet':
         net = AlexNet()
     elif args.model == 'ResNet18':
@@ -245,6 +245,7 @@ if __name__ == "__main__":
         net = ResNet50()
         args.test_batch_size = 1000
     constant.MODEL_SIZE = ravel_model_params(net.cuda()).numel()
+    print('MODEL:%s' % args.model)
     if not args.no_distributed:
         """ Initialize the distributed environment.
         Server and clients must call this as an entry point.

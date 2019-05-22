@@ -99,13 +99,15 @@ class GradientServer(GradientMessageListener):
         :return:
         """
         print("update gradient from rank%d,version%d" % (rank, version))
-        self.momentum.mul_(0.6)
-        self.momentum.add_(gradient_update)
-        self.global_model.add_(-1, self.momentum)
+        # self.momentum.mul_(0.5)
+        old_model = self.global_model.clone()
+        self.global_model.add_(-1, gradient_update)
+        self.global_model.add_(self.momentum.mul_(0.5))
+        self.momentum = self.global_model - old_model
 
-        agg_gradient = self.global_model.add(-1, self.synced_model)
+        # agg_gradient = self.global_model.add(-1, self.synced_model)
 
-        return agg_gradient, version
+        return None, version
 
     def receive(self, sender, message_code, gradient_version, parameter):
         global un_synced_worker
