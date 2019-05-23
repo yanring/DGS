@@ -82,11 +82,10 @@ def main(args):
         optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.5)
     else:
         print('distributed model')
-        optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net)
+        optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net, momentum=args.momentum)
         # optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
     # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, cooldown=1, verbose=True, factor=0.25)
     scheduler = MultiStepLR(optimizer, milestones=[20, 30, 35, 37], gamma=0.25)
-
 
     # train
     net.train()
@@ -151,8 +150,8 @@ def main(args):
         else:
             df.to_csv('log/single.csv', index_label='index')
     else:
-        df.to_csv('log/node{}_{}_{}_{}worker.csv'.format(dist.get_rank() - 1, args.mode,
-                                                         args.model, dist.get_world_size() - 1),
+        df.to_csv('log/node{}_{}_{}_m{}_{}worker.csv'.format(dist.get_rank() - 1, args.mode,
+                                                             args.model, args.momentum, dist.get_world_size() - 1),
                   index_label='index')
 
     print('Finished Training')
@@ -235,6 +234,7 @@ if __name__ == "__main__":
                         help='input batch size for testing (default: 10000)')
     parser.add_argument('--epochs', type=int, default=40, metavar='N', help='number of epochs to train (default: 20)')
     parser.add_argument('--lr', type=float, default=0.1, metavar='LR', help='learning rate (default: 0.1)')
+    parser.add_argument('--momentum', type=float, default=0.0, metavar='momentum', help='momentum (default: 0.0)')
     parser.add_argument('--cuda', action='store_true', default=False, help='use CUDA for training')
     parser.add_argument('--log-interval', type=int, default=10, metavar='N', help='how often to evaluate and print out')
     parser.add_argument('--no-distributed', action='store_true', default=False,
@@ -257,8 +257,9 @@ if __name__ == "__main__":
         else:
             os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 2)
         print('Using device%s, device count:%d' % (os.environ['CUDA_VISIBLE_DEVICES'], torch.cuda.device_count()))
-    args.model = 'ResNet18'
-    print(args.model)
+    args.model = 'ResNet50'
+    args.momentum = 0.6
+    print('MODEL:%s, momentum:%f' % (args.model, args.momentum))
     if args.model == 'AlexNet':
         net = AlexNet()
     elif args.model == 'ResNet18':
@@ -266,7 +267,7 @@ if __name__ == "__main__":
         args.test_batch_size = 1000
     elif args.model == 'ResNet50':
         net = ResNet50()
-        args.test_batch_size = 200
+        args.test_batch_size = 500
 
     if not args.no_distributed:
         """ Initialize the distributed environment.
