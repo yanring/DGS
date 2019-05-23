@@ -82,7 +82,7 @@ def main(args):
         optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net)
         # optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
     # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, cooldown=1, verbose=True, factor=0.25)
-    scheduler = MultiStepLR(optimizer, milestones=[20, 25, 30, 35], gamma=0.25)
+    scheduler = MultiStepLR(optimizer, milestones=[20, 30, 35, 37], gamma=0.25)
 
     # train
     net.train()
