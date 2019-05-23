@@ -236,7 +236,7 @@ if __name__ == "__main__":
         else:
             os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 2)
         print('Using device%s, device count:%d' % (os.environ['CUDA_VISIBLE_DEVICES'], torch.cuda.device_count()))
-    args.model = 'ResNet18'
+    args.model = 'ResNet50'
     if args.model == 'AlexNet':
         net = AlexNet()
     elif args.model == 'ResNet18':
@@ -244,7 +244,7 @@ if __name__ == "__main__":
         args.test_batch_size = 1000
     elif args.model == 'ResNet50':
         net = ResNet50()
-        args.test_batch_size = 1000
+        args.test_batch_size = 3000
     constant.MODEL_SIZE = ravel_model_params(net.cuda()).numel()
     print('MODEL:%s' % args.model)
     if not args.no_distributed:
