@@ -85,7 +85,8 @@ def main(args):
         optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net)
         # optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
     # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, cooldown=1, verbose=True, factor=0.25)
-    scheduler = MultiStepLR(optimizer, milestones=[20, 25, 30, 35], gamma=0.25)
+    scheduler = MultiStepLR(optimizer, milestones=[20, 30, 35, 37], gamma=0.25)
+
 
     # train
     net.train()
@@ -249,6 +250,7 @@ if __name__ == "__main__":
     parser.add_argument('--model', type=str, default='AlexNet', help='AlexNet, ResNet18, ResNet50')
     args = parser.parse_args()
     print(args)
+
     if args.cuda:
         if socket.gethostname() == 'yan-pc':
             os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 1)
@@ -256,6 +258,7 @@ if __name__ == "__main__":
             os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 2)
         print('Using device%s, device count:%d' % (os.environ['CUDA_VISIBLE_DEVICES'], torch.cuda.device_count()))
     args.model = 'ResNet18'
+    print(args.model)
     if args.model == 'AlexNet':
         net = AlexNet()
     elif args.model == 'ResNet18':
