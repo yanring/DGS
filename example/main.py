@@ -254,11 +254,11 @@ if __name__ == "__main__":
         else:
             os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 2)
         print('Using device%s, device count:%d' % (os.environ['CUDA_VISIBLE_DEVICES'], torch.cuda.device_count()))
-
+    args.model = 'ResNet18'
     if args.model == 'AlexNet':
         net = AlexNet()
     elif args.model == 'ResNet18':
-        net = ResNet50()
+        net = ResNet18()
         args.test_batch_size = 1000
     elif args.model == 'ResNet50':
         net = ResNet50()
