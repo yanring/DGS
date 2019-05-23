@@ -88,7 +88,7 @@ def main(args):
     net.train()
 
     for epoch in range(args.epochs):  # loop over the dataset multiple times
-        # scheduler.step()
+        scheduler.step()
         print("Training for epoch {}, lr={}".format(epoch, scheduler.optimizer.param_groups[0]['lr']))
         net.train()
         # set distributed_sampler.epoch to shuffle data.
