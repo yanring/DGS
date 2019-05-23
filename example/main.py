@@ -244,7 +244,7 @@ if __name__ == "__main__":
         args.test_batch_size = 1000
     elif args.model == 'ResNet50':
         net = ResNet50()
-        args.test_batch_size = 3000
+        args.test_batch_size = 1000
     constant.MODEL_SIZE = ravel_model_params(net.cuda()).numel()
     print('MODEL:%s' % args.model)
     if not args.no_distributed:
