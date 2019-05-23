@@ -81,6 +81,7 @@ class GradientSGD(Optimizer):
         self.queue = Queue(maxsize=1)
         self.listener = GradientListener(model, self.queue)
         self.listener.start()
+        self.momentum = self.filter_gradient.clone().zero_()
 
         super(GradientSGD, self).__init__(params, defaults)
 
@@ -109,8 +110,10 @@ class GradientSGD(Optimizer):
 
         # keep track of accumulated gradients so that we can send
         # ASYNC
-        self.filter_gradient = ravel_model_params(self.model, grads=True, cuda=True).mul_(lr)
-        send_message(GSMessageCode.GradientUpdate, self.filter_gradient, dst=0,
+        self.filter_gradient = ravel_model_params(self.model, grads=True, cuda=True)
+        # self.momentum.mul_(0.7)
+        # self.momentum.add_(self.filter_gradient).mul_(lr)
+        send_message(GSMessageCode.GradientUpdate, self.filter_gradient.mul_(lr), dst=0,
                      gradient_version=self.listener.version + 1)
 
         # COMPRESSION
