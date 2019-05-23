@@ -3,6 +3,7 @@ import time
 
 import os
 import socket
+from torch.optim.lr_scheduler import MultiStepLR
 
 WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname('main.py')))
 sys.path.append(WORKPATH)
@@ -80,8 +81,8 @@ def main(args):
         print('distributed model')
         optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net)
         # optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, cooldown=1, verbose=True, factor=0.25)
-    # scheduler = MultiStepLR(optimizer, milestones=[10, 20], gamma=0.1)
+    # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, cooldown=1, verbose=True, factor=0.25)
+    scheduler = MultiStepLR(optimizer, milestones=[10, 20], gamma=0.1)
 
     # train
     net.train()
@@ -136,7 +137,7 @@ def main(args):
                   "Test Accuracy: {test_accuracy:6.4f}".format(**logs[-1])
                   )
         # val_loss, val_accuracy = evaluate(net, testloader, args, verbose=True)
-        scheduler.step(logs[-1]['test_loss'])
+        # scheduler.step(logs[-1]['test_loss'])
 
     df = pd.DataFrame(logs)
     print(df)
