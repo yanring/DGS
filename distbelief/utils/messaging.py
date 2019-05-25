@@ -167,9 +167,10 @@ class GradientMessageListener(Thread):
             self.recv_queue, self.send_queue = self.init_worker_queue_manager()
         super(GradientMessageListener, self).__init__()
 
-    def receive(self, sender, message_code, gradient_version, parameter):
+    def receive(self, sender, message_code, gradient_version, lr, parameter):
         """receive
 
+        :param lr:
         :param gradient_version:
         :param sender: rank id of the sender
         :param message_code: Enum code
@@ -189,7 +190,7 @@ class GradientMessageListener(Thread):
                 if dist.get_rank() == 0:
                     print('RECEIVING MESSAGE %dto%d.size:%d,' % (
                         self.source, dist.get_rank(), size))
-                self.m_parameter = torch.zeros(size + 3)
+                self.m_parameter = torch.zeros(size + 4)
                 try:
                     sender = dist.recv(tensor=self.m_parameter, src=self.source)
                 except Exception as e:
@@ -200,7 +201,8 @@ class GradientMessageListener(Thread):
                 self.receive(int(self.m_parameter[0].item()),
                              GSMessageCode(self.m_parameter[1].item()),
                              int(self.m_parameter[2].item()),
-                             self.m_parameter[3:])
+                             float(self.m_parameter[3].item()),
+                             self.m_parameter[4:])
 
     def init_server_queue_manager(self):
 
@@ -264,21 +266,21 @@ class GradientServer(GradientMessageListener):
         self._end = None
         super().__init__(model_size, source)
 
-    def receive(self, sender, message_code, gradient_version, parameter):
+    def receive(self, sender, message_code, gradient_version, lr, parameter):
         # put gradient update to queue
         if message_code == GSMessageCode.SparseGradientUpdate:
             self.shared_gradient.copy_(unravel_sparse_gradient(parameter))
         else:
             self.shared_gradient.copy_(parameter)
-        self.shared_queue_recv.put([sender, message_code, gradient_version])
+        self.shared_queue_recv.put([sender, message_code, gradient_version, lr])
         # self.shared_queue_recv.put([sender, message_code, gradient_version, parameter])
 
-    def send_message(self, payload, message_code, gradient_version=None):
+    def send_message(self, payload, message_code, gradient_version=None, lr=None):
         """Sends a message to a destination
         Concatenates both the message code and destination with the payload into a single tensor and then sends that as a tensor
         """
         _LOGGER.info("SENDING MESSAGE: {} RANK: {}".format(message_code, dist.get_rank()))
-        m_parameter = torch.Tensor([dist.get_rank(), message_code.value, gradient_version])
+        m_parameter = torch.Tensor([dist.get_rank(), message_code.value, gradient_version, lr])
         # payload = self.shared_gradient
         size = str(payload.numel())
         payload = torch.cat((m_parameter, payload))
@@ -293,7 +295,7 @@ class GradientServer(GradientMessageListener):
         _LOGGER.info("Started Running!")
         # print('get message from %d' % self.source)
         send_info = self.shared_queue_send.get()
-        self.send_message(send_info[0], send_info[1], gradient_version=send_info[2])
+        self.send_message(send_info[0], send_info[1], gradient_version=send_info[2], lr=0.1)
         while self.running:
             _LOGGER.info("Polling for sparse message...")
             # for size in tail(self.size_filename):
@@ -303,7 +305,7 @@ class GradientServer(GradientMessageListener):
                 if dist.get_rank() == 0:
                     print('RECEIVING MESSAGE %dto%d.size:%d,' % (
                         self.source, dist.get_rank(), size))
-                self.m_parameter = torch.zeros(size + 3)
+                self.m_parameter = torch.zeros(size + 4)
                 try:
                     sender = dist.recv(tensor=self.m_parameter, src=self.source)
                 except Exception as e:
@@ -311,14 +313,16 @@ class GradientServer(GradientMessageListener):
                     time.sleep(0.5)
                     continue
                 # self.m_parameter = self.m_parameter.cuda()
-                # print('start',time.time())
+                # print('start',time.time())s
 
                 self.receive(int(self.m_parameter[0].item()),
                              GSMessageCode(self.m_parameter[1].item()),
                              int(self.m_parameter[2].item()),
-                             self.m_parameter[3:])
+                             float(self.m_parameter[3].item()),
+                             self.m_parameter[4:])
+
                 send_info = self.shared_queue_send.get()
-                self.send_message(send_info[0], send_info[1], gradient_version=send_info[2])
+                self.send_message(send_info[0], send_info[1], gradient_version=send_info[2], lr=send_info[3])
                 self._end = time.time()
                 print('server cal+messaging cost time : %f' % (self._end - self._start))
 
@@ -353,12 +357,12 @@ class QueueManager(BaseManager):
         send_queue.put(size)
 
 
-def send_message(message_code, payload, dst=0, gradient_version=None):
+def send_message(message_code, payload, dst=0, gradient_version=None, lr=0.1):
     """Sends a message to a destination
     Concatenates both the message code and destination with the payload into a single tensor and then sends that as a tensor
     """
     # _LOGGER.info("SENDING MESSAGE: {} RANK: {}".format(message_code, dist.get_rank()))
-    m_parameter = torch.Tensor([dist.get_rank(), message_code.value, gradient_version])
+    m_parameter = torch.Tensor([dist.get_rank(), message_code.value, gradient_version, lr])
     # print(m_parameter.size(), payload.size())
     if payload.is_cuda:
         payload = payload.cpu()

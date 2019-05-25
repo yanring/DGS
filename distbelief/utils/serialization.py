@@ -102,11 +102,12 @@ def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, moment
         except Exception as e:
             print(e)
             print(k, layer_u_kt.nelement())
+            return payload
             # print(layer_v_kt)
         threshold = float(topn[0][-1])
         mask = (abs(layer_u_kt) > threshold).float()
-        sum += mask.sum()
-        if sum > 1500000:
+        # sum += mask.sum()
+        if sum > 3000000:
             print(threshold)
         payload[current_index:current_index + numel].copy_(layer_u_kt.mul(mask))
         layer_u_kt.copy_(layer_u_kt.mul(1 - mask).mul(1 / momentum))
@@ -116,8 +117,6 @@ def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, moment
         # layer_u_kt.mul_(1 - mask)
         current_index += numel
     end = time.time()
-    if sum > 300000:
-        print(sum)
     return payload
 
 
@@ -243,6 +242,7 @@ def unravel_sparse_gradient(sparse_gradient):
     except Exception as e:
         print(e)
         print(size, constant.MODEL_SIZE, i[:20])
-        dense_gradient = torch.FloatTensor(size)
+        dense_gradient = torch.FloatTensor(size).zero_()
+
     # print(dense_gradient.sum())
     return dense_gradient

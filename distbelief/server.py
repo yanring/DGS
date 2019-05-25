@@ -48,7 +48,7 @@ class GradientExecutor(Process):
 
     def __init__(self, share_tensor, shared_queue_recv, shared_queue_send, shared_list, rank=0, worker_num=None,
                  global_model=None,
-                 synced_model=None, size_list=None):
+                 synced_model=None, size_list=None, lr=0):
         super().__init__()
         _LOGGER.info("Creating GradientExecutor")
         print("Creating GradientExecutor")
@@ -65,6 +65,7 @@ class GradientExecutor(Process):
         self.shared_list = shared_list
         self.net = None
         self.rank = rank
+        self.lr = lr
         self.sync_worker_model(1)
         self.node_gradient = {}
         self.size_list = size_list
@@ -73,7 +74,7 @@ class GradientExecutor(Process):
         print(constant.MODEL_SIZE)
 
     def sync_worker_model(self, version):
-        self.send_message(self.synced_model, GSMessageCode.ModelUpdate, version)
+        self.send_message(self.synced_model, GSMessageCode.ModelUpdate, version, self.lr.value or 0.1)
 
     def sync_model(self):
         self.synced_model.copy_(self.global_model)
@@ -86,7 +87,7 @@ class GradientExecutor(Process):
         :param gradient_update: tensor, gradient update tensor
         :return:
         """
-        print("update gradient from rank%d,version%d" % (rank, version))
+        # print("update gradient from rank%d,version%d" % (rank, version))
 
         self.global_model.add_(-1, gradient_update)
 
@@ -94,12 +95,14 @@ class GradientExecutor(Process):
 
         return self.agg_gradient, version
 
-    def receive(self, sender, message_code, gradient_version, parameter):
-        print("Processing message: {} from sender {} gradient version {}".format(message_code.name,
-                                                                                 sender,
-                                                                                 gradient_version))
+    def receive(self, sender, message_code, gradient_version, lr, parameter):
+        # print("Processing message: {} from sender {} gradient version {}".format(message_code.name,
+        #                                                                          sender,
+        #                                                                          gradient_version))
         self.max_version = max(self.max_version, gradient_version)
-
+        if sender == 1:
+            self.lr.value = lr
+            print(self.lr)
         if message_code == GSMessageCode.GradientUpdate:
             self.update(sender, gradient_version, parameter)
             self.send_message(self.global_model, GSMessageCode.ModelUpdate,
@@ -123,7 +126,7 @@ class GradientExecutor(Process):
                 # print(abs(self.send_grad).sum())
                 # print('server cal cost time : %f' % (end - start))
                 self.send_message(ravel_sparse_gradient(self.send_grad), GSMessageCode.SparseGradientUpdate,
-                                  gradient_version)
+                                  gradient_version, self.lr.value)
                 self.acc_send_grad.add_(self.send_grad)
             # else:
             #     self.shared_tensor.copy_(self.agg_gradient.add(-1, self.acc_send_grad))
@@ -136,8 +139,8 @@ class GradientExecutor(Process):
         else:
             raise Exception('GSMessageCode not implemented')
 
-    def send_message(self, payload, message_code, gradient_version):
-        self.shared_queue_send.put([payload.cpu(), message_code, gradient_version])
+    def send_message(self, payload, message_code, gradient_version, lr):
+        self.shared_queue_send.put([payload.cpu(), message_code, gradient_version, lr])
 
     def run(self):
         while 1:
@@ -146,5 +149,5 @@ class GradientExecutor(Process):
             # print('end', time.time())
             if self.max_version < 20:
                 constant.MODEL_SIZE = self.global_model.numel()
-            self.receive(recv[0], recv[1], recv[2], self.shared_tensor)
+            self.receive(recv[0], recv[1], recv[2], recv[3], self.shared_tensor)
             # print('Process %d is running' % self.rank)

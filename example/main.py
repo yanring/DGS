@@ -79,19 +79,22 @@ def main(args):
     constant.MODEL_SIZE = ravel_model_params(net).numel()
 
     if args.no_distributed:
-        optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.5)
+        optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum)
     else:
         print('distributed model')
         optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net, momentum=args.momentum)
         # optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
-    # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, cooldown=1, verbose=True, factor=0.25)
+    # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, cooldown=1, verbose=True, factor=0.25)
     scheduler = MultiStepLR(optimizer, milestones=[20, 30, 35, 37], gamma=0.25)
-
+    compress_ratio = [0.001] * args.epochs
+    compress_ratio[0:4] = [0.1, 0.0625, 0.0625 * 0.25, 0.004]
     # train
     net.train()
 
     for epoch in range(args.epochs):  # loop over the dataset multiple times
-        scheduler.step()
+        # scheduler.step()
+        if not args.no_distributed:
+            optimizer.compress_ratio = compress_ratio[epoch]
         print("Training for epoch {}, lr={}".format(epoch, scheduler.optimizer.param_groups[0]['lr']))
         net.train()
         # set distributed_sampler.epoch to shuffle data.
@@ -140,7 +143,9 @@ def main(args):
                   "Test Accuracy: {test_accuracy:6.4f}".format(**logs[-1])
                   )
         # val_loss, val_accuracy = evaluate(net, testloader, args, verbose=True)
-        # scheduler.step(logs[-1]['test_loss'])
+        if args.no_distributed or dist.get_rank() == 1:
+            # scheduler.step(logs[-1]['test_loss'])
+            scheduler.step()
 
     df = pd.DataFrame(logs)
     print(df)
@@ -150,8 +155,8 @@ def main(args):
         else:
             df.to_csv('log/single.csv', index_label='index')
     else:
-        df.to_csv('log/node{}_{}_{}_m{}_{}worker.csv'.format(dist.get_rank() - 1, args.mode,
-                                                             args.model, args.momentum, dist.get_world_size() - 1),
+        df.to_csv('log/node{}_{}_{}_{}_{}worker.csv'.format(dist.get_rank() - 1, args.mode,
+                                                            args.model, 'admom', dist.get_world_size() - 1),
                   index_label='index')
 
     print('Finished Training')
@@ -203,7 +208,9 @@ def init_server(args):
     synced_model = global_model.clone()
     synced_model = synced_model.share_memory_()
     # shared_tensors = [synced_model.clone() for _ in range(args.world_size - 1)]
-    shared_list = Manager().list([0 for _ in range(args.world_size - 1)])
+    manager = Manager()
+    shared_list = manager.list([0 for _ in range(args.world_size - 1)])
+    shared_lr = manager.Value("d", 0.0)
 
     # print(shared_list)
     for i in range(1, threads_num + 1):
@@ -218,7 +225,7 @@ def init_server(args):
         p = GradientExecutor(share_tensor, share_queue_recv, share_queue_send, shared_list, rank=i,
                              worker_num=args.world_size,
                              global_model=global_model,
-                             synced_model=synced_model, size_list=size_list)
+                             synced_model=synced_model, size_list=size_list, lr=shared_lr)
         p.start()
         threads.append(th)
         procs.append(p)
@@ -257,8 +264,10 @@ if __name__ == "__main__":
         else:
             os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 2)
         print('Using device%s, device count:%d' % (os.environ['CUDA_VISIBLE_DEVICES'], torch.cuda.device_count()))
-    args.model = 'ResNet50'
+
+    args.model = 'ResNet18'
     args.momentum = 0.6
+
     print('MODEL:%s, momentum:%f' % (args.model, args.momentum))
     if args.model == 'AlexNet':
         net = AlexNet()
@@ -267,7 +276,7 @@ if __name__ == "__main__":
         args.test_batch_size = 1000
     elif args.model == 'ResNet50':
         net = ResNet50()
-        args.test_batch_size = 500
+        args.test_batch_size = 1000
 
     if not args.no_distributed:
         """ Initialize the distributed environment.
