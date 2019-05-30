@@ -1,5 +1,4 @@
 import time
-
 import torch
 
 from distbelief.utils import constant
@@ -107,8 +106,8 @@ def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, moment
         threshold = float(topn[0][-1])
         mask = (abs(layer_u_kt) > threshold).float()
         # sum += mask.sum()
-        if sum > 3000000:
-            print(threshold)
+        # if sum > 3000000:
+        #     print(threshold)
         payload[current_index:current_index + numel].copy_(layer_u_kt.mul(mask))
         layer_u_kt.copy_(layer_u_kt.mul(1 - mask).mul(1 / momentum))
         # layer_v_kt.zero_()
@@ -223,6 +222,8 @@ def ravel_sparse_gradient(temp_param):
     # temp_param[abs(temp_param) < threshold] = 0
     indices = temp_param.nonzero()
     values = temp_param[indices]
+    if len(indices) > 3000000:
+        print("why???", len(indices), values.sum())
     # value = temp_param[temp_param != 0]
     # print(values.sum())
     # size = indices.numel()

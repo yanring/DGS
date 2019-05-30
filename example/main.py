@@ -1,8 +1,7 @@
-import sys
-import time
-
 import os
 import socket
+import sys
+import time
 from multiprocessing import Manager
 from torch.optim.lr_scheduler import MultiStepLR
 
@@ -84,8 +83,8 @@ def main(args):
         print('distributed model')
         optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net, momentum=args.momentum)
         # optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
-    # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, cooldown=1, verbose=True, factor=0.25)
-    scheduler = MultiStepLR(optimizer, milestones=[20, 30, 35, 37], gamma=0.25)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, cooldown=1, verbose=True, factor=0.25)
+    # scheduler = MultiStepLR(optimizer, milestones=[19, 29, 34, 36], gamma=0.25)
     compress_ratio = [0.001] * args.epochs
     compress_ratio[0:4] = [0.1, 0.0625, 0.0625 * 0.25, 0.004]
     # train
@@ -144,8 +143,8 @@ def main(args):
                   )
         # val_loss, val_accuracy = evaluate(net, testloader, args, verbose=True)
         if args.no_distributed or dist.get_rank() == 1:
-            # scheduler.step(logs[-1]['test_loss'])
-            scheduler.step()
+            scheduler.step(logs[-1]['test_loss'])
+            # scheduler.step()
 
     df = pd.DataFrame(logs)
     print(df)
@@ -155,8 +154,8 @@ def main(args):
         else:
             df.to_csv('log/single.csv', index_label='index')
     else:
-        df.to_csv('log/node{}_{}_{}_{}_{}worker.csv'.format(dist.get_rank() - 1, args.mode,
-                                                            args.model, 'admom', dist.get_world_size() - 1),
+        df.to_csv('log/node{}_{}_{}_m{}_{}worker.csv'.format(dist.get_rank() - 1, args.mode,
+                                                             args.model, args.momentum, dist.get_world_size() - 1),
                   index_label='index')
 
     print('Finished Training')
@@ -168,7 +167,8 @@ def evaluate(net, testloader, args, verbose=False):
     else:
         classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
     net.eval()
-
+    total = 0
+    correct = 0
     test_loss = 0
     with torch.no_grad():
         for data in testloader:
@@ -179,8 +179,13 @@ def evaluate(net, testloader, args, verbose=False):
             outputs = net(images)
             _, predicted = torch.max(outputs, 1)
             test_loss += F.cross_entropy(outputs, labels).item()
+            total += labels.size(0)
+            correct += (predicted == labels).sum()
 
-    test_accuracy = accuracy_score(predicted, labels)
+    fake_test_accuracy = accuracy_score(predicted, labels)
+    test_accuracy = correct.item() / total
+    print('%f,%f,%f|%f,%s' % (
+        test_accuracy, correct.item(), total, fake_test_accuracy, str((predicted == labels).sum())))
     if verbose:
         print('Loss: {:.3f}'.format(test_loss))
         print('Accuracy: {:.3f}'.format(test_accuracy))
@@ -204,6 +209,7 @@ def init_server(args):
     global_model = ravel_model_params(net, cuda=True)
     constant.MODEL_SIZE = global_model.numel()
     del net
+    torch.cuda.empty_cache()
     global_model = global_model.share_memory_()
     synced_model = global_model.clone()
     synced_model = synced_model.share_memory_()

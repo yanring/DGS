@@ -1,9 +1,8 @@
-import sys
-import time
-
 import logging
 import os
+import sys
 import threading
+import time
 import torch.distributed as dist
 from datetime import datetime
 from queue import Queue
@@ -129,7 +128,7 @@ class GradientSGD(Optimizer):
         # else:
         #     rate = 0.001
         raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, self.u_kt, self.v_kt,
-                                                     rate=lr * 0.1,
+                                                     rate=0.1 * lr,
                                                      lr=lr, momentum=self.momentum)
         sparse_gradient = ravel_sparse_gradient(raveled_gradients)
         send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst=0,
