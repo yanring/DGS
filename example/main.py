@@ -1,12 +1,15 @@
-import os
-import socket
 import sys
 import time
+
+import os
+import socket
 from multiprocessing import Manager
-from torch.optim.lr_scheduler import MultiStepLR
 
 WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname('main.py')))
 sys.path.append(WORKPATH)
+
+from distbelief.utils.GradualWarmupScheduler import GradualWarmupScheduler
+
 from distbelief.utils.messaging import GradientServer
 from distbelief.utils.serialization import ravel_model_params
 
@@ -46,9 +49,11 @@ def get_dataset(args, transform_train, transform_test):
 
     sampler = DistributedSampler(trainset, args.world_size - 1, args.rank - 1)
     # sampler = DistributedSampler(trainset, 1, 0)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, shuffle=False, num_workers=1,
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, pin_memory=True, shuffle=False,
+                                              num_workers=1,
                                               sampler=sampler)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=args.test_batch_size, shuffle=False, num_workers=1)
+    testloader = torch.utils.data.DataLoader(testset, batch_size=args.test_batch_size, pin_memory=True, shuffle=False,
+                                             num_workers=1)
     return trainloader, testloader
 
 
@@ -83,7 +88,10 @@ def main(args):
         print('distributed model')
         optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net, momentum=args.momentum)
         # optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, cooldown=1, verbose=True, factor=0.25)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True, factor=0.25)
+    scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=10, total_epoch=5,
+                                              after_scheduler=scheduler)
+
     # scheduler = MultiStepLR(optimizer, milestones=[19, 29, 34, 36], gamma=0.25)
     compress_ratio = [0.001] * args.epochs
     compress_ratio[0:4] = [0.1, 0.0625, 0.0625 * 0.25, 0.004]
@@ -91,6 +99,7 @@ def main(args):
     net.train()
 
     for epoch in range(args.epochs):  # loop over the dataset multiple times
+
         # scheduler.step()
         if not args.no_distributed:
             optimizer.compress_ratio = compress_ratio[epoch]
@@ -123,7 +132,7 @@ def main(args):
                 'training_loss': loss.item(),
                 'training_accuracy': accuracy,
             }
-            if i % 20 == 0:
+            if i % 80 == 0:
                 print("Timestamp: {timestamp} | "
                       "Iteration: {iteration:6} | "
                       "Loss: {training_loss:6.4f} | "
@@ -141,10 +150,10 @@ def main(args):
                   "Test Loss: {test_loss:6.4f} | "
                   "Test Accuracy: {test_accuracy:6.4f}".format(**logs[-1])
                   )
-        # val_loss, val_accuracy = evaluate(net, testloader, args, verbose=True)
         if args.no_distributed or dist.get_rank() == 1:
-            scheduler.step(logs[-1]['test_loss'])
-            # scheduler.step()
+            scheduler_warmup.step(epoch=epoch, metrics=logs[-1]['test_loss'])
+        # val_loss, val_accuracy = evaluate(net, testloader, args, verbose=True)
+
 
     df = pd.DataFrame(logs)
     print(df)
@@ -206,7 +215,7 @@ def init_server(args):
     size_list = [i.data.numel() for i in net.parameters()]
     threads = []
     procs = []
-    global_model = ravel_model_params(net, cuda=True)
+    global_model = ravel_model_params(net, cuda=True).detach()
     constant.MODEL_SIZE = global_model.numel()
     del net
     torch.cuda.empty_cache()
@@ -243,10 +252,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Distbelief training example')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                         help='input batch size for training (default: 64)')
-    parser.add_argument('--test-batch-size', type=int, default=20000, metavar='N',
+    parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 10000)')
     parser.add_argument('--epochs', type=int, default=40, metavar='N', help='number of epochs to train (default: 20)')
-    parser.add_argument('--lr', type=float, default=0.1, metavar='LR', help='learning rate (default: 0.1)')
+    parser.add_argument('--lr', type=float, default=0.01, metavar='LR', help='learning rate (default: 0.1)')
     parser.add_argument('--momentum', type=float, default=0.0, metavar='momentum', help='momentum (default: 0.0)')
     parser.add_argument('--cuda', action='store_true', default=False, help='use CUDA for training')
     parser.add_argument('--log-interval', type=int, default=10, metavar='N', help='how often to evaluate and print out')
@@ -272,7 +281,7 @@ if __name__ == "__main__":
         print('Using device%s, device count:%d' % (os.environ['CUDA_VISIBLE_DEVICES'], torch.cuda.device_count()))
 
     args.model = 'ResNet18'
-    args.momentum = 0.6
+    args.momentum = 0.9
 
     print('MODEL:%s, momentum:%f' % (args.model, args.momentum))
     if args.model == 'AlexNet':
@@ -282,6 +291,9 @@ if __name__ == "__main__":
         args.test_batch_size = 1000
     elif args.model == 'ResNet50':
         net = ResNet50()
+        args.test_batch_size = 1000
+    elif args.model == 'DavidNet':
+        net = DavidNet()
         args.test_batch_size = 1000
 
     if not args.no_distributed:

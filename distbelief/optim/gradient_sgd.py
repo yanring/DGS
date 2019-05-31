@@ -1,8 +1,9 @@
+import sys
+import time
+
 import logging
 import os
-import sys
 import threading
-import time
 import torch.distributed as dist
 from datetime import datetime
 from queue import Queue
@@ -111,6 +112,7 @@ class GradientSGD(Optimizer):
             if self.tmp != self.listener.lr:
                 print('lr from %f to %f' % (self.tmp, self.listener.lr))
                 self.tmp = self.listener.lr
+                self.param_groups[0]['lr'] = self.listener.lr
             lr = self.listener.lr
             # print(lr)
 

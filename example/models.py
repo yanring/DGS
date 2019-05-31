@@ -22,6 +22,66 @@ class LeNet(nn.Module):
         return x
 
 
+class ConvBN(nn.Module):
+    def __init__(self, c_in, c_out, bn_weight_init=1.0):
+        super().__init__()
+        self.conv = nn.Conv2d(c_in, c_out, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn = nn.BatchNorm2d(c_out)
+        self.bn.weight.data.fill_(bn_weight_init)
+        self.relu = nn.ReLU(True)
+
+    def forward(self, inputs):
+        return self.relu(self.bn(self.conv(inputs)))
+
+
+class ResBlk(nn.Module):
+    def __init__(self, c_in, c_out, pool, res=False):
+        super().__init__()
+        self.conv_bn = ConvBN(c_in, c_out)
+        self.pool = pool
+        self.res = res
+        if self.res:
+            self.res1 = ConvBN(c_out, c_out)
+            self.res2 = ConvBN(c_out, c_out)
+
+    def forward(self, inputs):
+        h = self.pool(self.conv_bn(inputs))
+        if self.res:
+            h = h + self.res2(self.res1(h))
+        return h
+
+
+class DavidNet(nn.Module):
+    def __init__(self, c=64, weight=0.125):
+        super().__init__()
+        pool = nn.MaxPool2d(2)
+        self.init_conv_bn = ConvBN(3, c)
+        self.blk1 = ResBlk(c, c * 2, pool, res=True)
+        #     self.blk1 = ResBlk(c, c*2, pool)
+        self.blk2 = ResBlk(c * 2, c * 4, pool)
+        self.blk3 = ResBlk(c * 4, c * 8, pool, res=True)
+        #     self.blk3 = ResBlk(c*4, c*8, pool)
+        self.pool = nn.AdaptiveMaxPool2d((1, 1))
+        self.linear = nn.Linear(c * 8, 10, bias=False)
+
+        self.weight = weight
+        self.loss = nn.CrossEntropyLoss(reduction='sum')
+
+    def to_dev(self, device):
+        self.to(device)
+        self.blk1.to(device)
+        self.blk2.to(device)
+        self.blk3.to(device)
+        return self
+
+    def forward(self, x):
+        h = self.pool(self.blk3(self.blk2(self.blk1(self.init_conv_bn(x)))))
+        h = h.view(h.size(0), h.size(1))
+        h = self.linear(h) * self.weight
+        # loss = self.loss(h, y)
+        # correct = (h.max(dim = 1)[1] == y).sum()
+        return h
+
 # class AlexNet(nn.Module):
 #     def __init__(self, num_classes=10):
 #         super(AlexNet, self).__init__()
