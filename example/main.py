@@ -160,7 +160,8 @@ def evaluate(net, testloader, args, verbose=False):
     else:
         classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
     net.eval()
-
+    total = 0
+    correct = 0
     test_loss = 0
     with torch.no_grad():
         for data in testloader:
@@ -171,8 +172,13 @@ def evaluate(net, testloader, args, verbose=False):
             outputs = net(images)
             _, predicted = torch.max(outputs, 1)
             test_loss += F.cross_entropy(outputs, labels).item()
+            total += labels.size(0)
+            correct += (predicted == labels).sum()
 
-    test_accuracy = accuracy_score(predicted, labels)
+    fake_test_accuracy = accuracy_score(predicted, labels)
+    test_accuracy = correct.item() / total
+    print('%f,%f,%f|%f,%s' % (
+        test_accuracy, correct.item(), total, fake_test_accuracy, str((predicted == labels).sum())))
     if verbose:
         print('Loss: {:.3f}'.format(test_loss))
         print('Accuracy: {:.3f}'.format(test_accuracy))
