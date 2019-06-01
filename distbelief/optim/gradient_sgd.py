@@ -110,7 +110,7 @@ class GradientSGD(Optimizer):
             # lr = 0.2
         else:
             if self.tmp != self.listener.lr:
-                print('lr from %f to %f' % (self.tmp, self.listener.lr))
+                # print('lr from %f to %f' % (self.tmp, self.listener.lr))
                 self.tmp = self.listener.lr
                 self.param_groups[0]['lr'] = self.listener.lr
             lr = self.listener.lr
@@ -130,7 +130,8 @@ class GradientSGD(Optimizer):
         # else:
         #     rate = 0.001
         raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, self.u_kt, self.v_kt,
-                                                     rate=0.1 * lr,
+                                                     # rate=0.1 * lr if self.version > (785/dist.get_world_size())*1 else 0.1,
+                                                     rate=self.compress_ratio,
                                                      lr=lr, momentum=self.momentum)
         sparse_gradient = ravel_sparse_gradient(raveled_gradients)
         send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst=0,

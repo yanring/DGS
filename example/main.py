@@ -4,6 +4,7 @@ import time
 import os
 import socket
 from multiprocessing import Manager
+from torch.optim.lr_scheduler import MultiStepLR
 
 WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname('main.py')))
 sys.path.append(WORKPATH)
@@ -88,18 +89,20 @@ def main(args):
         print('distributed model')
         optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net, momentum=args.momentum)
         # optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, verbose=True, factor=0.25)
+    # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=4, cooldown=1, verbose=True, factor=0.25)
+    scheduler = MultiStepLR(optimizer, milestones=[20, 30, 34, 36], gamma=0.25)
+
     scheduler_warmup = GradualWarmupScheduler(optimizer, multiplier=10, total_epoch=5,
                                               after_scheduler=scheduler)
 
-    # scheduler = MultiStepLR(optimizer, milestones=[19, 29, 34, 36], gamma=0.25)
     compress_ratio = [0.001] * args.epochs
-    compress_ratio[0:4] = [0.1, 0.0625, 0.0625 * 0.25, 0.004]
+    compress_ratio[0:4] = [0.25, 0.0625, 0.0625 * 0.25, 0.004]
     # train
     net.train()
-
+    preloss = 0
     for epoch in range(args.epochs):  # loop over the dataset multiple times
-
+        if args.no_distributed or dist.get_rank() == 1:
+            scheduler_warmup.step(epoch=epoch + 1, metrics=preloss)
         # scheduler.step()
         if not args.no_distributed:
             optimizer.compress_ratio = compress_ratio[epoch]
@@ -125,7 +128,7 @@ def main(args):
             optimizer.step()
             _, predicted = torch.max(outputs, 1)
             accuracy = accuracy_score(predicted, labels)
-
+            preloss = loss.item()
             log_obj = {
                 'timestamp': datetime.now(),
                 'iteration': i,
@@ -150,10 +153,8 @@ def main(args):
                   "Test Loss: {test_loss:6.4f} | "
                   "Test Accuracy: {test_accuracy:6.4f}".format(**logs[-1])
                   )
-        if args.no_distributed or dist.get_rank() == 1:
-            scheduler_warmup.step(epoch=epoch, metrics=logs[-1]['test_loss'])
-        # val_loss, val_accuracy = evaluate(net, testloader, args, verbose=True)
 
+        # val_loss, val_accuracy = evaluate(net, testloader, args, verbose=True)
 
     df = pd.DataFrame(logs)
     print(df)
@@ -254,7 +255,7 @@ if __name__ == "__main__":
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 10000)')
-    parser.add_argument('--epochs', type=int, default=40, metavar='N', help='number of epochs to train (default: 20)')
+    parser.add_argument('--epochs', type=int, default=60, metavar='N', help='number of epochs to train (default: 20)')
     parser.add_argument('--lr', type=float, default=0.01, metavar='LR', help='learning rate (default: 0.1)')
     parser.add_argument('--momentum', type=float, default=0.0, metavar='momentum', help='momentum (default: 0.0)')
     parser.add_argument('--cuda', action='store_true', default=False, help='use CUDA for training')
@@ -281,7 +282,7 @@ if __name__ == "__main__":
         print('Using device%s, device count:%d' % (os.environ['CUDA_VISIBLE_DEVICES'], torch.cuda.device_count()))
 
     args.model = 'ResNet18'
-    args.momentum = 0.9
+    args.momentum = 0.7
 
     print('MODEL:%s, momentum:%f' % (args.model, args.momentum))
     if args.model == 'AlexNet':
