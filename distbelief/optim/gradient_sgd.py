@@ -63,7 +63,7 @@ class GradientListener(GradientMessageListener):
 class GradientSGD(Optimizer):
     """GradientSGD"""
 
-    def __init__(self, params, lr=required, model=required, momentum=None):
+    def __init__(self, params, lr=required, model=required, momentum=None, weight_decay=0, args=None):
         """
         :param params:
         :param lr:
@@ -71,6 +71,8 @@ class GradientSGD(Optimizer):
         :param n_pull:
         :param model:
         """
+        dist.init_process_group('tcp', init_method='file://%s/sharedfile' % WORKPATH, group_name='mygroup',
+                                world_size=args.world_size, rank=args.rank)
         if lr is not required and lr < 0.0:
             raise ValueError("Invalid learning rate: {}".format(lr))
         print('I am node rank:%d' % dist.get_rank())
@@ -87,6 +89,7 @@ class GradientSGD(Optimizer):
         self.listener.start()
         self.tmp = 0
         self.compress_ratio = None
+        self.weight_decay = weight_decay
         super(GradientSGD, self).__init__(params, defaults)
 
     def step(self, closure=None):
@@ -110,9 +113,8 @@ class GradientSGD(Optimizer):
             # lr = 0.2
         else:
             if self.tmp != self.listener.lr:
-                # print('lr from %f to %f' % (self.tmp, self.listener.lr))
+                print('lr from %f to %f' % (self.tmp, self.listener.lr))
                 self.tmp = self.listener.lr
-                self.param_groups[0]['lr'] = self.listener.lr
             lr = self.listener.lr
             # print(lr)
 
@@ -130,9 +132,8 @@ class GradientSGD(Optimizer):
         # else:
         #     rate = 0.001
         raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, self.u_kt, self.v_kt,
-                                                     # rate=0.1 * lr if self.version > (785/dist.get_world_size())*1 else 0.1,
-                                                     rate=self.compress_ratio,
-                                                     lr=lr, momentum=self.momentum)
+                                                     rate=0.1 * lr,
+                                                     lr=lr, momentum=self.momentum, weight_decay=self.weight_decay)
         sparse_gradient = ravel_sparse_gradient(raveled_gradients)
         send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst=0,
                      gradient_version=self.listener.version + 1, lr=lr)

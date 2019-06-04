@@ -1,12 +1,8 @@
 import time
+
 import torch
 
 from distbelief.utils import constant
-
-# from utils import messaging
-# from example.main import transforms
-
-# model = AlexNet().cuda()
 
 current_model_size = None
 
@@ -15,7 +11,7 @@ def ravel_model_params(model, grads=False, cuda=False):
     """
     Squash model parameters or gradients into a single tensor.
     """
-    if 1:
+    if next(model.parameters()).is_cuda:
         m_parameter = torch.Tensor([0]).cuda()
     else:
         m_parameter = torch.Tensor([0])
@@ -72,7 +68,7 @@ def gradient_filter(param):
     return threshold
 
 
-def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, momentum=None):
+def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, momentum=None, weight_decay=0):
     """
     :param momentum:
     :param lr:
@@ -86,14 +82,12 @@ def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, moment
     start = time.time()
     current_index = 0
     u_kt.mul_(momentum)
-    sum = 0
-    # v_kt.add_(u_kt)
     for param in net.parameters():
         numel = param.data.numel()
         layer_u_kt = u_kt[current_index:current_index + numel]
-        # layer_v_kt = v_kt[current_index:current_index + numel]
+        if weight_decay != 0:
+            param.grad.data.add_(weight_decay, param.data)
         layer_u_kt.add_(param.grad.data.view(-1).mul(lr))
-        # layer_v_kt.add_(layer_u_kt)
         k = int(numel * rate) if int(numel * rate) != 0 else 1
         topn = [[1.0]]
         try:
@@ -105,13 +99,8 @@ def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, moment
             # print(layer_v_kt)
         threshold = float(topn[0][-1])
         mask = (abs(layer_u_kt) > threshold).float()
-        # sum += mask.sum()
-        # if sum > 3000000:
-        #     print(threshold)
         payload[current_index:current_index + numel].copy_(layer_u_kt.mul(mask))
-        layer_u_kt.copy_(layer_u_kt.mul(1 - mask).mul(1 / momentum))
-        # layer_v_kt.zero_()
-
+        layer_u_kt.copy_(layer_u_kt.mul(1 - mask).mul(0.99 / momentum))
         # layer_v_kt.mul_(1 - mask)
         # layer_u_kt.mul_(1 - mask)
         current_index += numel
@@ -150,7 +139,7 @@ def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, moment
 #             # print(layer_v_kt)
 #         threshold = float(topn[0][-1])
 #         mask = (abs(layer_v_kt) > threshold).float()
-#         # sum += mask.sum()
+#         # sum += mask.s.cuda()um()
 #         payload[current_index:current_index + numel].copy_(layer_v_kt.mul(mask))
 #         layer_v_kt.mul_(1 - mask)
 #         # layer_u_kt.mul_(1 - mask)
@@ -224,6 +213,7 @@ def ravel_sparse_gradient(temp_param):
     values = temp_param[indices]
     if len(indices) > 3000000:
         print("why???", len(indices), values.sum())
+        return torch.FloatTensor([1, 0.1])
     # value = temp_param[temp_param != 0]
     # print(values.sum())
     # size = indices.numel()
