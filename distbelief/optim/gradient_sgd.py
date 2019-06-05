@@ -115,6 +115,7 @@ class GradientSGD(Optimizer):
             if self.tmp != self.listener.lr:
                 print('lr from %f to %f' % (self.tmp, self.listener.lr))
                 self.tmp = self.listener.lr
+                self.param_groups[0]['lr'] = self.tmp
             lr = self.listener.lr
             # print(lr)
 

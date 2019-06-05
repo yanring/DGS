@@ -87,7 +87,7 @@ def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, moment
         layer_u_kt = u_kt[current_index:current_index + numel]
         if weight_decay != 0:
             param.grad.data.add_(weight_decay, param.data)
-        layer_u_kt.add_(param.grad.data.view(-1).mul(lr))
+        layer_u_kt.add_(param.grad.data.view(-1))
         k = int(numel * rate) if int(numel * rate) != 0 else 1
         topn = [[1.0]]
         try:
@@ -99,8 +99,8 @@ def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, moment
             # print(layer_v_kt)
         threshold = float(topn[0][-1])
         mask = (abs(layer_u_kt) > threshold).float()
-        payload[current_index:current_index + numel].copy_(layer_u_kt.mul(mask))
-        layer_u_kt.copy_(layer_u_kt.mul(1 - mask).mul(0.99 / momentum))
+        payload[current_index:current_index + numel].copy_(layer_u_kt.mul(mask).mul(lr))
+        layer_u_kt.copy_(layer_u_kt.mul(1 - mask).mul(1 / momentum))
         # layer_v_kt.mul_(1 - mask)
         # layer_u_kt.mul_(1 - mask)
         current_index += numel

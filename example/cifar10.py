@@ -122,7 +122,7 @@ def cifar10(args):
                 'training_loss': loss.item(),
                 'training_accuracy': accuracy,
             }
-            if i % 20 == 0:
+            if i % 80 == 0:
                 print("Timestamp: {timestamp} | "
                       "Iteration: {iteration:6} | "
                       "Loss: {training_loss:6.4f} | "
