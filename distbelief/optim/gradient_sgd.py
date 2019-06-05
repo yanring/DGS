@@ -5,7 +5,6 @@ import logging
 import os
 import threading
 import torch.distributed as dist
-from datetime import datetime
 from queue import Queue
 from torch.optim.optimizer import Optimizer, required
 
@@ -50,7 +49,7 @@ class GradientListener(GradientMessageListener):
             send_message(GSMessageCode.ModelUpdate, model, dst=0, gradient_version=0)
             print('send model to server')
         elif message_code == GSMessageCode.ModelUpdate:
-            print('sync model!', gradient_version, ' ', datetime.now(), ' synced model :', parameter.sum())
+            # print('sync model!', gradient_version, ' ', datetime.now(), ' synced model :', parameter.sum())
             unravel_model_params(self.model, parameter)
             self.version = gradient_version
             self.flag = True
@@ -90,6 +89,7 @@ class GradientSGD(Optimizer):
         self.tmp = 0
         self.compress_ratio = None
         self.weight_decay = weight_decay
+        self.args = args
         super(GradientSGD, self).__init__(params, defaults)
 
     def step(self, closure=None):
@@ -121,23 +121,17 @@ class GradientSGD(Optimizer):
 
         # keep track of accumulated gradients so that we can send
         # ASYNC
-        # self.filter_gradient = ravel_model_params(self.model, grads=True, cuda=True).mul_(lr)
-        # send_message(GSMessageCode.GradientUpdate, self.filter_gradient, dst=0,
-        #              gradient_version=self.listener.version + 1)
-
-        # COMPRESSION
-        # if self.version < 781 / 4 * 3:
-        #     rate = 0.01
-        # elif self.version < 7810 / 4 * 2:
-        #     rate = 0.01
-        # else:
-        #     rate = 0.001
-        raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, self.u_kt, self.v_kt,
-                                                     rate=0.1 * lr,
-                                                     lr=lr, momentum=self.momentum, weight_decay=self.weight_decay)
-        sparse_gradient = ravel_sparse_gradient(raveled_gradients)
-        send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst=0,
-                     gradient_version=self.listener.version + 1, lr=lr)
+        if self.args.mode == 'asgd':
+            self.filter_gradient = ravel_model_params(self.model, grads=True, cuda=True).mul_(lr)
+            send_message(GSMessageCode.GradientUpdate, self.filter_gradient, dst=0,
+                         gradient_version=self.listener.version + 1)
+        else:
+            raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, self.u_kt, self.v_kt,
+                                                         rate=0.1 * lr,
+                                                         lr=lr, momentum=self.momentum, weight_decay=self.weight_decay)
+            sparse_gradient = ravel_sparse_gradient(raveled_gradients)
+            send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst=0,
+                         gradient_version=self.listener.version + 1, lr=lr)
 
         # reset gradient version
         self.version = self.queue.get()

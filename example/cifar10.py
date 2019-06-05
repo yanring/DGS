@@ -83,7 +83,7 @@ def cifar10(args):
                                 args=args)
         # optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
     # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, cooldown=1, verbose=True, factor=0.25)
-    scheduler = MultiStepLR(optimizer, milestones=[50, 80], gamma=0.1)
+    scheduler = MultiStepLR(optimizer, milestones=[30, 40], gamma=0.1)
     compress_ratio = [0.001] * args.epochs
     compress_ratio[0:4] = [0.1, 0.0625, 0.0625 * 0.25, 0.004]
     # train
@@ -153,8 +153,9 @@ def cifar10(args):
         else:
             df.to_csv('log/single.csv', index_label='index')
     else:
-        df.to_csv('log/node{}_{}_{}_m{}_{}worker.csv'.format(args.rank - 1, args.mode,
-                                                             args.model, args.momentum, args.world_size - 1),
+        df.to_csv('log/node{}_{}_{}_m{}_e{}_b{}_{}worker.csv'.format(args.rank - 1, args.mode,
+                                                                     args.model, args.momentum, args.epochs,
+                                                                     args.batch_size, args.world_size - 1),
                   index_label='index')
 
     print('Finished Training')

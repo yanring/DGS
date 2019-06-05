@@ -219,7 +219,11 @@ class GradientServer(GradientMessageListener):
             global_lr = lr
 
         if message_code == GSMessageCode.GradientUpdate:
-            self.update(sender, gradient_version, parameter)
+            if self.cuda:
+                self.update(sender, gradient_version, parameter.cuda())
+            else:
+                self.update(sender, gradient_version, parameter)
+
             send_message(GSMessageCode.ModelUpdate, self.global_model, dst=sender,
                          gradient_version=gradient_version)
         elif message_code == GSMessageCode.SparseGradientUpdate:

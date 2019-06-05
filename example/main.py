@@ -45,7 +45,7 @@ if __name__ == "__main__":
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=20000, metavar='N',
                         help='input batch size for testing (default: 10000)')
-    parser.add_argument('--epochs', type=int, default=100, metavar='N', help='number of epochs to train (default: 20)')
+    parser.add_argument('--epochs', type=int, default=50, metavar='N', help='number of epochs to train (default: 20)')
     parser.add_argument('--lr', type=float, default=0.1, metavar='LR', help='learning rate (default: 0.1)')
     parser.add_argument('--momentum', type=float, default=0.0, metavar='momentum', help='momentum (default: 0.0)')
     parser.add_argument('--cuda', action='store_true', default=False, help='use CUDA for training')
@@ -59,10 +59,9 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', type=str, default='CIFAR10', help='which dataset to train on')
     parser.add_argument('--master', type=str, default='localhost', help='ip address of the master (server) node')
     parser.add_argument('--port', type=str, default='29500', help='port on master node to communicate with')
-    parser.add_argument('--mode', type=str, default='gradient_sgd', help='gradient_sgd or async')
+    parser.add_argument('--mode', type=str, default='gradient_sgd', help='gradient_sgd or asgd')
     parser.add_argument('--model', type=str, default='AlexNet', help='AlexNet, ResNet18, ResNet50')
     args = parser.parse_args()
-    print(args)
 
     if args.cuda:
         if socket.gethostname() == 'yan-pc':
@@ -87,7 +86,7 @@ if __name__ == "__main__":
         args.test_batch_size = 500
     else:
         net = None
-
+    print(args)
     if not args.no_distributed:
         """ Initialize the distributed environment.
         Server and clients must call this as an entry point.
