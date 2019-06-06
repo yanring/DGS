@@ -1,7 +1,6 @@
-import sys
-
 import os
 import socket
+import sys
 
 WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname('main.py')))
 sys.path.append(WORKPATH)
@@ -49,6 +48,7 @@ if __name__ == "__main__":
     parser.add_argument('--lr', type=float, default=0.1, metavar='LR', help='learning rate (default: 0.1)')
     parser.add_argument('--momentum', type=float, default=0.0, metavar='momentum', help='momentum (default: 0.0)')
     parser.add_argument('--cuda', action='store_true', default=False, help='use CUDA for training')
+    parser.add_argument('--warmup', action='store_true', default=False, help='use warmup or not')
     parser.add_argument('--log-interval', type=int, default=10, metavar='N', help='how often to evaluate and print out')
     parser.add_argument('--no-distributed', action='store_true', default=False,
                         help='whether to use DownpourSGD or normal SGD')
@@ -72,6 +72,8 @@ if __name__ == "__main__":
 
     args.model = 'ResNet18'
     args.momentum = 0.7
+    args.warmup = True
+    args.mode = 'gradient_sgd'
     print('MODEL:%s, momentum:%f' % (args.model, args.momentum))
     if args.model == 'AlexNet':
         net = AlexNet()

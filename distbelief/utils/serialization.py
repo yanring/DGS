@@ -1,5 +1,4 @@
 import time
-
 import torch
 
 from distbelief.utils import constant
@@ -96,58 +95,51 @@ def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, moment
             print(e)
             print(k, layer_u_kt.nelement())
             return payload
-            # print(layer_v_kt)
         threshold = float(topn[0][-1])
         mask = (abs(layer_u_kt) > threshold).float()
         payload[current_index:current_index + numel].copy_(layer_u_kt.mul(mask).mul(lr))
         layer_u_kt.copy_(layer_u_kt.mul(1 - mask).mul(1 / momentum))
-        # layer_v_kt.mul_(1 - mask)
-        # layer_u_kt.mul_(1 - mask)
         current_index += numel
     end = time.time()
     return payload
 
 
-# def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, momentum=None):
-#     """
-#     :param momentum:
-#     :param lr:
-#     :param v_kt:
-#     :param payload:
-#     :param u_kt:
-#     :param net: model
-#     :param rate: compression rate
-#     :return: gradients which lager than threshold
-#     """
-#     start = time.time()
-#     current_index = 0
-#     u_kt.mul_(momentum)
-#     sum = 0
-#     for param in net.parameters():
-#         numel = param.data.numel()
-#         layer_u_kt = u_kt[current_index:current_index + numel]
-#         layer_v_kt = v_kt[current_index:current_index + numel]
-#         layer_u_kt.add_(param.grad.data.view(-1)).mul_(lr)
-#         layer_v_kt.add_(layer_u_kt)
-#         k = int(numel * rate) if int(numel * rate) != 0 else 1
-#         topn = [[1.0]]
-#         try:
-#             topn = torch.topk(abs(layer_v_kt), k)
-#         except Exception as e:
-#             print(e)
-#             print(k, layer_v_kt.nelement())
-#             # print(layer_v_kt)
-#         threshold = float(topn[0][-1])
-#         mask = (abs(layer_v_kt) > threshold).float()
-#         # sum += mask.s.cuda()um()
-#         payload[current_index:current_index + numel].copy_(layer_v_kt.mul(mask))
-#         layer_v_kt.mul_(1 - mask)
-#         # layer_u_kt.mul_(1 - mask)
-#         current_index += numel
-#     end = time.time()
-#     if sum > 300000:
-#         print(sum)
-#     return payload
+def DGC(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, momentum=None):
+    """
+    :param momentum:
+    :param lr:
+    :param v_kt:
+    :param payload:
+    :param u_kt:
+    :param net: model
+    :param rate: compression rate
+    :return: gradients which lager than threshold
+    """
+    start = time.time()
+    current_index = 0
+    u_kt.mul_(momentum)
+    sum = 0
+    for param in net.parameters():
+        numel = param.data.numel()
+        layer_u_kt = u_kt[current_index:current_index + numel]
+        layer_v_kt = v_kt[current_index:current_index + numel]
+        layer_u_kt.add_(param.grad.data.view(-1))
+        layer_v_kt.add_(layer_u_kt)
+        k = int(numel * rate) if int(numel * rate) != 0 else 1
+        topn = [[1.0]]
+        try:
+            topn = torch.topk(abs(layer_v_kt), k)
+        except Exception as e:
+            print(e)
+            print(k, layer_v_kt.nelement())
+            # print(layer_v_kt)
+        threshold = float(topn[0][-1])
+        mask = (abs(layer_v_kt) > threshold).float()
+        payload[current_index:current_index + numel].copy_(layer_v_kt.mul(mask).mul_(lr))
+        layer_v_kt.mul_(1 - mask)
+        layer_u_kt.mul_(1 - mask)
+        current_index += numel
+    return payload
 
 
 def worker_gradient_filter(net, rate=0.01):

@@ -1,8 +1,9 @@
+import os
 import sys
 import time
-
-import os
 from torch.optim.lr_scheduler import MultiStepLR
+
+from distbelief.utils.GradualWarmupScheduler import GradualWarmupScheduler
 
 WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname('main.py')))
 sys.path.append(WORKPATH)
@@ -74,8 +75,11 @@ def cifar10(args):
     trainloader, testloader = get_dataset(args, transform_train, transform_test)
     if args.cuda:
         net = net.cuda()
+    if args.warmup:
+        args.lr = args.lr / 10
     constant.MODEL_SIZE = ravel_model_params(net).numel()
     if args.no_distributed:
+        net = net.half()
         optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=5e-4)
     else:
         print('distributed model')
@@ -84,13 +88,19 @@ def cifar10(args):
         # optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
     # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, cooldown=1, verbose=True, factor=0.25)
     scheduler = MultiStepLR(optimizer, milestones=[30, 40], gamma=0.1)
-    compress_ratio = [0.001] * args.epochs
-    compress_ratio[0:4] = [0.1, 0.0625, 0.0625 * 0.25, 0.004]
+    if args.warmup:
+        scheduler = GradualWarmupScheduler(optimizer, multiplier=10, total_epoch=4,
+                                           after_scheduler=scheduler)
+    compress_ratio = [0.001] * (args.epochs + 10)
+    compress_ratio[0:4] = [0.25, 0.0625, 0.0625 * 0.25, 0.004]
     # train
     net.train()
 
-    for epoch in range(args.epochs):  # loop over the dataset multiple times
+    for epoch in range(1, args.epochs + 1):  # loop over the dataset multiple times
         # scheduler.step()
+        if args.no_distributed or args.rank == 1:
+            # scheduler.step(logs[-1]['test_loss'])
+            scheduler.step(epoch)
         if not args.no_distributed:
             optimizer.compress_ratio = compress_ratio[epoch]
         print("Training for epoch {}, lr={}".format(epoch, scheduler.optimizer.param_groups[0]['lr']))
@@ -104,6 +114,8 @@ def cifar10(args):
 
             if args.cuda:
                 inputs, labels = inputs.cuda(), labels.cuda()
+            if args.no_distributed:
+                inputs = inputs.half()
 
             # zero the parameter gradients
             optimizer.zero_grad()
@@ -141,15 +153,14 @@ def cifar10(args):
                   "Test Accuracy: {test_accuracy:6.4f}".format(**logs[-1])
                   )
         # val_loss, val_accuracy = evaluate(net, testloader, args, verbose=True)
-        if args.no_distributed or args.rank == 1:
-            # scheduler.step(logs[-1]['test_loss'])
-            scheduler.step()
+
 
     df = pd.DataFrame(logs)
     print(df)
     if args.no_distributed:
         if args.cuda:
-            df.to_csv('log/gpu.csv', index_label='index')
+            df.to_csv('log/gpu_{}_{}_m{}_e{}_b{}.csv'.format(args.mode, args.model, args.momentum, args.epochs,
+                                                             args.batch_size), index_label='index')
         else:
             df.to_csv('log/single.csv', index_label='index')
     else:
@@ -175,7 +186,8 @@ def evaluate(net, testloader, args, verbose=False):
             images, labels = data
             if args.cuda:
                 images, labels = images.cuda(), labels.cuda()
-
+            if args.no_distributed:
+                images = images.half()
             outputs = net(images)
             _, predicted = torch.max(outputs, 1)
             test_loss += F.cross_entropy(outputs, labels).item()
