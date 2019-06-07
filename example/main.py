@@ -59,7 +59,7 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', type=str, default='CIFAR10', help='which dataset to train on')
     parser.add_argument('--master', type=str, default='localhost', help='ip address of the master (server) node')
     parser.add_argument('--port', type=str, default='29500', help='port on master node to communicate with')
-    parser.add_argument('--mode', type=str, default='gradient_sgd', help='gradient_sgd or asgd')
+    parser.add_argument('--mode', type=str, default='gradient_sgd', help='gradient_sgd, dgc, Aji or asgd')
     parser.add_argument('--model', type=str, default='AlexNet', help='AlexNet, ResNet18, ResNet50')
     args = parser.parse_args()
 
@@ -72,7 +72,7 @@ if __name__ == "__main__":
 
     args.model = 'ResNet18'
     args.momentum = 0.7
-    args.warmup = True
+    # args.warmup = True
     args.mode = 'gradient_sgd'
     print('MODEL:%s, momentum:%f' % (args.model, args.momentum))
     if args.model == 'AlexNet':

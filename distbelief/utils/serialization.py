@@ -142,6 +142,45 @@ def DGC(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, momentum=None):
     return payload
 
 
+def Aji(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, momentum=None, weight_decay=0):
+    """
+    :param momentum:
+    :param lr:
+    :param v_kt:
+    :param payload:
+    :param u_kt:
+    :param net: model
+    :param rate: compression rate
+    :return: gradients which lager than threshold
+    """
+    start = time.time()
+    current_index = 0
+    # u_kt.mul_(momentum)
+    sum = 0
+    for param in net.parameters():
+        numel = param.data.numel()
+        # layer_u_kt = u_kt[current_index:current_index + numel]
+        if weight_decay != 0:
+            param.grad.data.add_(weight_decay, param.data)
+        layer_v_kt = v_kt[current_index:current_index + numel]
+        # layer_u_kt.add_(param.grad.data.view(-1))
+        layer_v_kt.add_(param.grad.data.view(-1))
+        k = int(numel * rate) if int(numel * rate) != 0 else 1
+        topn = [[1.0]]
+        try:
+            topn = torch.topk(abs(layer_v_kt), k)
+        except Exception as e:
+            print(e)
+            print(k, layer_v_kt.nelement())
+            # print(layer_v_kt)
+        threshold = float(topn[0][-1])
+        mask = (abs(layer_v_kt) > threshold).float()
+        payload[current_index:current_index + numel].copy_(layer_v_kt.mul(mask).mul_(lr))
+        layer_v_kt.mul_(1 - mask)
+        # layer_u_kt.mul_(1 - mask)
+        current_index += numel
+    return payload
+
 def worker_gradient_filter(net, rate=0.01):
     start = time.time()
     # rate = 0.01
@@ -203,9 +242,9 @@ def ravel_sparse_gradient(temp_param):
     # temp_param[abs(temp_param) < threshold] = 0
     indices = temp_param.nonzero()
     values = temp_param[indices]
-    if len(indices) > 3000000:
-        print("why???", len(indices), values.sum())
-        return torch.FloatTensor([1, 0.1])
+    # if len(indices) > 3000000:
+    #     print("why???", len(indices), values.sum())
+    #     return torch.FloatTensor([1, 0.1])
     # value = temp_param[temp_param != 0]
     # print(values.sum())
     # size = indices.numel()

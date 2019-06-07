@@ -92,7 +92,7 @@ def cifar10(args):
         scheduler = GradualWarmupScheduler(optimizer, multiplier=10, total_epoch=4,
                                            after_scheduler=scheduler)
     compress_ratio = [0.001] * (args.epochs + 10)
-    compress_ratio[0:4] = [0.25, 0.0625, 0.0625 * 0.25, 0.004]
+    compress_ratio[1:4] = [0.25, 0.0625, 0.0625 * 0.25, 0.004]
     # train
     net.train()
 

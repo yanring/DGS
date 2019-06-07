@@ -9,7 +9,7 @@ from torch.optim.optimizer import Optimizer, required
 
 from distbelief.utils.messaging import send_message, GSMessageCode, GradientMessageListener
 from distbelief.utils.serialization import ravel_model_params, update_model_params, unravel_model_params, \
-    ravel_sparse_gradient, unravel_sparse_gradient, worker_gradient_executor, DGC
+    ravel_sparse_gradient, unravel_sparse_gradient, worker_gradient_executor, DGC, Aji
 
 WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname('main.py')))
 sys.path.append(WORKPATH)
@@ -88,6 +88,7 @@ class GradientSGD(Optimizer):
         self.tmp = 0
         self.compress_ratio = None
         self.weight_decay = weight_decay
+        print('weight_decay', self.weight_decay)
         self.args = args
         super(GradientSGD, self).__init__(params, defaults)
 
@@ -136,6 +137,13 @@ class GradientSGD(Optimizer):
             raveled_gradients = DGC(self.model, self.filter_gradient, self.u_kt, self.v_kt,
                                     rate=self.compress_ratio,
                                     lr=lr, momentum=self.momentum)
+            sparse_gradient = ravel_sparse_gradient(raveled_gradients)
+            send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst=0,
+                         gradient_version=self.listener.version + 1, lr=lr)
+        elif self.args.mode == 'Aji':
+            raveled_gradients = Aji(self.model, self.filter_gradient, self.u_kt, self.v_kt,
+                                    rate=0.01,
+                                    lr=lr, momentum=self.momentum, weight_decay=self.weight_decay)
             sparse_gradient = ravel_sparse_gradient(raveled_gradients)
             send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst=0,
                          gradient_version=self.listener.version + 1, lr=lr)
