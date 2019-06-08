@@ -1,6 +1,7 @@
+import sys
+
 import os
 import socket
-import sys
 
 WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname('main.py')))
 sys.path.append(WORKPATH)
@@ -40,7 +41,7 @@ def init_server(args, net):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Distbelief training example')
-    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=128, metavar='N',
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=20000, metavar='N',
                         help='input batch size for testing (default: 10000)')
@@ -72,6 +73,7 @@ if __name__ == "__main__":
 
     args.model = 'ResNet18'
     args.momentum = 0.7
+    args.half = 'False'
     # args.warmup = True
     args.mode = 'gradient_sgd'
     print('MODEL:%s, momentum:%f' % (args.model, args.momentum))

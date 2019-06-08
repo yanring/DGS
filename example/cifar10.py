@@ -1,6 +1,7 @@
-import os
 import sys
 import time
+
+import os
 from torch.optim.lr_scheduler import MultiStepLR
 
 from distbelief.utils.GradualWarmupScheduler import GradualWarmupScheduler
@@ -78,12 +79,15 @@ def cifar10(args):
     if args.warmup:
         args.lr = args.lr / 10
     constant.MODEL_SIZE = ravel_model_params(net).numel()
-    if args.no_distributed:
+    if args.no_distributed and args.half:
         net = net.half()
+
+    if args.no_distributed:
         optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=5e-4)
     else:
         print('distributed model')
-        optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net, momentum=args.momentum, weight_decay=5e-4,
+        optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net, momentum=args.momentum,
+                                weight_decay=5e-4 * (args.world_size - 1) / 8,
                                 args=args)
         # optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
     # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, cooldown=1, verbose=True, factor=0.25)
@@ -114,7 +118,7 @@ def cifar10(args):
 
             if args.cuda:
                 inputs, labels = inputs.cuda(), labels.cuda()
-            if args.no_distributed:
+            if args.no_distributed and args.half:
                 inputs = inputs.half()
 
             # zero the parameter gradients
@@ -186,7 +190,7 @@ def evaluate(net, testloader, args, verbose=False):
             images, labels = data
             if args.cuda:
                 images, labels = images.cuda(), labels.cuda()
-            if args.no_distributed:
+            if args.no_distributed and args.half:
                 images = images.half()
             outputs = net(images)
             _, predicted = torch.max(outputs, 1)

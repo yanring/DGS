@@ -1,8 +1,9 @@
+import sys
+import time
+
 import logging
 import os
-import sys
 import threading
-import time
 import torch.distributed as dist
 from queue import Queue
 from torch.optim.optimizer import Optimizer, required
@@ -127,7 +128,7 @@ class GradientSGD(Optimizer):
                          gradient_version=self.listener.version + 1)
         elif self.args.mode == 'gradient_sgd':
             raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, self.u_kt, self.v_kt,
-                                                         rate=0.1 * lr,
+                                                         rate=0.4 * lr / (self.args.world_size - 1),
                                                          lr=lr, momentum=self.momentum, weight_decay=self.weight_decay)
 
             sparse_gradient = ravel_sparse_gradient(raveled_gradients)
