@@ -1,7 +1,6 @@
-import sys
-
 import os
 import socket
+import sys
 
 WORKPATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 print(WORKPATH)
@@ -76,7 +75,6 @@ if __name__ == "__main__":
     args.momentum = 0.7
     args.half = 'False'
     # args.warmup = True
-    args.mode = 'gradient_sgd'
     print('MODEL:%s, momentum:%f' % (args.model, args.momentum))
     if args.model == 'AlexNet':
         net = AlexNet()

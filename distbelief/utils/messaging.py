@@ -1,9 +1,8 @@
-import time
-
 import logging
 import os
 import queue
 import socket
+import time
 import torch
 import torch.distributed as dist
 from enum import Enum
@@ -278,7 +277,7 @@ class GradientMessageListener(Thread):
         else:
             time.sleep(10)
             print('queue init in th')
-            self.manager = QueueManager(address=('89.72.3.29', 5000), authkey=b'abc')
+            self.manager = QueueManager(address=('89.72.3.18', 5000), authkey=b'abc')
         try:
             self.manager.connect()
         except Exception as e:
@@ -407,9 +406,9 @@ def send_message(message_code, payload, dst=0, gradient_version=None, lr=0.1):
         payload = payload.cpu()
     size = str(payload.numel())
     payload = torch.cat((m_parameter, payload))
-    # if dist.get_rank() == 0:
-    #     print('%s SENDING MESSAGE %s gradient_version %d, %dto%d.size:%d' % (
-    #         str(time.time()), message_code, gradient_version, dist.get_rank(), dst, payload.numel()))
+    if dist.get_rank() == 0 and 'gn' in socket.gethostname():
+        print('%s SENDING MESSAGE %s gradient_version %d, %dto%d.size:%d' % (
+            str(time.time()), message_code, gradient_version, dist.get_rank(), dst, payload.numel()))
     # with open('%dto%d.size' % (dist.get_rank(), dst), 'a') as f:
     #     f.write(size)
     QueueManager.put_size(dst, size)

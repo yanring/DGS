@@ -1,12 +1,11 @@
+import os
 import sys
 import time
-
-import os
 from torch.optim.lr_scheduler import MultiStepLR
 
 from distbelief.utils.GradualWarmupScheduler import GradualWarmupScheduler
 
-WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname('main.py')))
+WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(WORKPATH)
 
 from distbelief.utils.serialization import ravel_model_params
@@ -162,7 +161,22 @@ def cifar10(args):
                   )
         # val_loss, val_accuracy = evaluate(net, testloader, args, verbose=True)
 
-    df = pd.DataFrame(logs)
+        df = pd.DataFrame(logs)
+        if args.no_distributed:
+            if args.cuda:
+                df.to_csv(WORKPATH + '/log/gpu_{}_{}_m{}_e{}_b{}.csv'.format(args.mode, args.model, args.momentum,
+                                                                             args.epochs,
+                                                                             args.batch_size),
+                          index_label='index')
+            else:
+                df.to_csv(WORKPATH + '/log/single.csv', index_label='index')
+        else:
+            df.to_csv(WORKPATH + '/log/node{}_{}_{}_m{}_e{}_b{}_{}worker.csv'.format(args.rank - 1, args.mode,
+                                                                                     args.model, args.momentum,
+                                                                                     args.epochs,
+                                                                                     args.batch_size,
+                                                                                     args.world_size - 1),
+                      index_label='index')
     print(df)
     if args.no_distributed:
         if args.cuda:
@@ -177,7 +191,6 @@ def cifar10(args):
                                                                         args.batch_size, args.world_size - 1,
                                                                         logs[-1]['test_accuracy']),
                   index_label='index')
-
     print('Finished Training')
 
 

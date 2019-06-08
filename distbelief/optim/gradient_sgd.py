@@ -1,9 +1,8 @@
-import sys
-import time
-
 import logging
 import os
+import sys
 import threading
+import time
 import torch.distributed as dist
 from queue import Queue
 from torch.optim.optimizer import Optimizer, required
@@ -14,7 +13,7 @@ from distbelief.utils.serialization import ravel_model_params, update_model_para
 
 WORKPATH = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(WORKPATH)
-
+print(WORKPATH)
 _LOGGER = logging.getLogger(__name__)
 lock = threading.Lock()
 
