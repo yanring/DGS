@@ -3,7 +3,8 @@ import sys
 import os
 import socket
 
-WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname('main.py')))
+WORKPATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+print(WORKPATH)
 sys.path.append(WORKPATH)
 from example.cifar10 import cifar10
 
@@ -41,7 +42,7 @@ def init_server(args, net):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Distbelief training example')
-    parser.add_argument('--batch-size', type=int, default=128, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=20000, metavar='N',
                         help='input batch size for testing (default: 10000)')
@@ -71,7 +72,7 @@ if __name__ == "__main__":
             os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 2)
         print('Using device%s, device count:%d' % (os.environ['CUDA_VISIBLE_DEVICES'], torch.cuda.device_count()))
 
-    args.model = 'ResNet18'
+    args.model = 'ResNet50'
     args.momentum = 0.7
     args.half = 'False'
     # args.warmup = True

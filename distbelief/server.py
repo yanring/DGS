@@ -211,9 +211,9 @@ class GradientServer(GradientMessageListener):
 
     def receive(self, sender, message_code, gradient_version, lr, parameter):
         global un_synced_worker, global_lr
-        print("rank {} Processing message: {} from sender {} gradient version {}".format(self.source, message_code.name,
-                                                                                         sender,
-                                                                                         gradient_version))
+        # print("rank {} Processing message: {} from sender {} gradient version {}".format(self.source, message_code.name,
+        #                                                                                  sender,
+        #                                                                                  gradient_version))
         self.max_version = max(self.max_version, gradient_version)
         if sender == 1:
             global_lr = lr

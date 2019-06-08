@@ -12,7 +12,7 @@ from distbelief.utils.messaging import send_message, GSMessageCode, GradientMess
 from distbelief.utils.serialization import ravel_model_params, update_model_params, unravel_model_params, \
     ravel_sparse_gradient, unravel_sparse_gradient, worker_gradient_executor, DGC, Aji
 
-WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname('main.py')))
+WORKPATH = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(WORKPATH)
 
 _LOGGER = logging.getLogger(__name__)

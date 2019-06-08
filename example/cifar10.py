@@ -33,11 +33,15 @@ def get_dataset(args, transform_train, transform_test):
     :return:
     """
     if args.dataset == 'MNIST':
-        trainset = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform_train)
-        testset = torchvision.datasets.MNIST(root='./data', train=False, download=True, transform=transform_test)
+        trainset = torchvision.datasets.MNIST(root='%s/data' % WORKPATH, train=True, download=True,
+                                              transform=transform_train)
+        testset = torchvision.datasets.MNIST(root='%s/data' % WORKPATH, train=False, download=True,
+                                             transform=transform_test)
     else:
-        trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
-        testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_test)
+        trainset = torchvision.datasets.CIFAR10(root='%s/data' % WORKPATH, train=True, download=True,
+                                                transform=transform_train)
+        testset = torchvision.datasets.CIFAR10(root='%s/data' % WORKPATH, train=False, download=True,
+                                               transform=transform_test)
 
     sampler = DistributedSampler(trainset, args.world_size - 1, args.rank - 1)
     # sampler = DistributedSampler(trainset, 1, 0)
@@ -87,11 +91,11 @@ def cifar10(args):
     else:
         print('distributed model')
         optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net, momentum=args.momentum,
-                                weight_decay=5e-4 * (args.world_size - 1) / 8,
+                                weight_decay=5e-4 * (args.world_size - 1) / 4,
                                 args=args)
         # optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
     # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, cooldown=1, verbose=True, factor=0.25)
-    scheduler = MultiStepLR(optimizer, milestones=[30, 40], gamma=0.1)
+    scheduler = MultiStepLR(optimizer, milestones=[30, 45], gamma=0.1)
     if args.warmup:
         scheduler = GradualWarmupScheduler(optimizer, multiplier=10, total_epoch=4,
                                            after_scheduler=scheduler)
@@ -158,19 +162,20 @@ def cifar10(args):
                   )
         # val_loss, val_accuracy = evaluate(net, testloader, args, verbose=True)
 
-
     df = pd.DataFrame(logs)
     print(df)
     if args.no_distributed:
         if args.cuda:
-            df.to_csv('log/gpu_{}_{}_m{}_e{}_b{}.csv'.format(args.mode, args.model, args.momentum, args.epochs,
-                                                             args.batch_size), index_label='index')
+            df.to_csv('log/gpu_{}_{}_m{}_e{}_b{}_{}.csv'.format(args.mode, args.model, args.momentum, args.epochs,
+                                                                args.batch_size, logs[-1]['test_accuracy']),
+                      index_label='index')
         else:
             df.to_csv('log/single.csv', index_label='index')
     else:
-        df.to_csv('log/node{}_{}_{}_m{}_e{}_b{}_{}worker.csv'.format(args.rank - 1, args.mode,
-                                                                     args.model, args.momentum, args.epochs,
-                                                                     args.batch_size, args.world_size - 1),
+        df.to_csv('log/node{}_{}_{}_m{}_e{}_b{}_{}worker_{}.csv'.format(args.rank - 1, args.mode,
+                                                                        args.model, args.momentum, args.epochs,
+                                                                        args.batch_size, args.world_size - 1,
+                                                                        logs[-1]['test_accuracy']),
                   index_label='index')
 
     print('Finished Training')
