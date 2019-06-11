@@ -2,10 +2,9 @@
 """
 Parameter server for distbelief
 """
-import time
-
 import logging
 import threading
+import time
 import torch
 import torch.optim
 from torch.multiprocessing import Process
@@ -243,7 +242,7 @@ class GradientServer(GradientMessageListener):
                 un_synced_worker.remove(sender)
             else:
                 self.send_grad = self.agg_gradient.add(-1, self.acc_send_grad)
-                server_gradient_filter(self.size_list, self.send_grad, rate=0.01)
+                server_gradient_filter(self.size_list, self.send_grad, rate=0.1 * global_lr)
                 # end = time.time()
                 # print(abs(self.send_grad).sum())
                 # print('server cal cost time : %f' % (end - start))

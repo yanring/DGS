@@ -1,7 +1,6 @@
-import sys
-
 import os
 import socket
+import sys
 
 WORKPATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 print(WORKPATH)
@@ -71,8 +70,8 @@ if __name__ == "__main__":
         if socket.gethostname() == 'yan-pc':
             os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 1)
         else:
-            # os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 2)
-            os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+            os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 2)
+            # os.environ['CUDA_VISIBLE_DEVICES'] = '1'
         print('Using device%s, device count:%d' % (os.environ['CUDA_VISIBLE_DEVICES'], torch.cuda.device_count()))
 
     args.model = 'ResNet18'

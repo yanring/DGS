@@ -1,7 +1,6 @@
+import os
 import sys
 import time
-
-import os
 from torch.optim.lr_scheduler import MultiStepLR
 
 from distbelief.utils.GradualWarmupScheduler import GradualWarmupScheduler
@@ -174,12 +173,13 @@ def cifar10(args):
                 else:
                     df.to_csv(WORKPATH + '/log/tmp_single.csv', index_label='index')
             else:
-                df.to_csv(WORKPATH + '/log/tmp_node{}_{}_{}_m{}_e{}_b{}_{}worker.csv'.format(args.rank - 1, args.mode,
-                                                                                             args.model, args.momentum,
-                                                                                             args.epochs,
-                                                                                             args.batch_size,
-                                                                                             args.world_size - 1),
-                          index_label='index')
+                df.to_csv(
+                    WORKPATH + '/log/tmp_node{}_{}_{}_m{}_e{}_b{}_dual_{}worker.csv'.format(args.rank - 1, args.mode,
+                                                                                            args.model, args.momentum,
+                                                                                            args.epochs,
+                                                                                            args.batch_size,
+                                                                                            args.world_size - 1),
+                    index_label='index')
     print(df)
     if args.no_distributed:
         if args.cuda:
