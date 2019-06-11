@@ -1,4 +1,5 @@
 import time
+
 import torch
 
 from distbelief.utils import constant
@@ -160,11 +161,9 @@ def Aji(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, momentum=None, weight_decay
     for param in net.parameters():
         numel = param.data.numel()
         # layer_u_kt = u_kt[current_index:current_index + numel]
-        if weight_decay != 0:
-            param.grad.data.add_(weight_decay, param.data)
         layer_v_kt = v_kt[current_index:current_index + numel]
         # layer_u_kt.add_(param.grad.data.view(-1))
-        layer_v_kt.add_(param.grad.data.view(-1))
+        layer_v_kt.add_(param.grad.data.view(-1).mul(lr))
         k = int(numel * rate) if int(numel * rate) != 0 else 1
         topn = [[1.0]]
         try:
@@ -175,11 +174,12 @@ def Aji(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, momentum=None, weight_decay
             # print(layer_v_kt)
         threshold = float(topn[0][-1])
         mask = (abs(layer_v_kt) > threshold).float()
-        payload[current_index:current_index + numel].copy_(layer_v_kt.mul(mask).mul_(lr))
+        payload[current_index:current_index + numel].copy_(layer_v_kt.mul(mask))
         layer_v_kt.mul_(1 - mask)
         # layer_u_kt.mul_(1 - mask)
         current_index += numel
     return payload
+
 
 def worker_gradient_filter(net, rate=0.01):
     start = time.time()

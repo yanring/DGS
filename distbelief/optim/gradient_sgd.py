@@ -1,8 +1,9 @@
+import sys
+import time
+
 import logging
 import os
-import sys
 import threading
-import time
 import torch.distributed as dist
 from queue import Queue
 from torch.optim.optimizer import Optimizer, required
@@ -122,10 +123,14 @@ class GradientSGD(Optimizer):
         # keep track of accumulated gradients so that we can send
         # ASYNC
         if self.args.mode == 'asgd':
+            print('Running asgd')
+
             self.filter_gradient = ravel_model_params(self.model, grads=True, cuda=True).mul_(lr)
             send_message(GSMessageCode.GradientUpdate, self.filter_gradient, dst=0,
                          gradient_version=self.listener.version + 1)
         elif self.args.mode == 'gradient_sgd':
+            if self.version < 5:
+                print('Running gradient_sgd')
             raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, self.u_kt, self.v_kt,
                                                          rate=0.4 * lr / (self.args.world_size - 1),
                                                          lr=lr, momentum=self.momentum, weight_decay=self.weight_decay)
@@ -134,16 +139,20 @@ class GradientSGD(Optimizer):
             send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst=0,
                          gradient_version=self.listener.version + 1, lr=lr)
         elif self.args.mode == 'dgc':
+            if self.version < 5:
+                print('Running dgc')
             raveled_gradients = DGC(self.model, self.filter_gradient, self.u_kt, self.v_kt,
                                     rate=self.compress_ratio,
                                     lr=lr, momentum=self.momentum)
             sparse_gradient = ravel_sparse_gradient(raveled_gradients)
             send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst=0,
                          gradient_version=self.listener.version + 1, lr=lr)
-        elif self.args.mode == 'Aji':
+        elif self.args.mode == 'aji':
+            if self.version < 5:
+                print('Running aji ', self.version)
             raveled_gradients = Aji(self.model, self.filter_gradient, self.u_kt, self.v_kt,
                                     rate=0.01,
-                                    lr=lr, momentum=self.momentum, weight_decay=self.weight_decay)
+                                    lr=lr, momentum=self.momentum)
             sparse_gradient = ravel_sparse_gradient(raveled_gradients)
             send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst=0,
                          gradient_version=self.listener.version + 1, lr=lr)
