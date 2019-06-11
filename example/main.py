@@ -27,6 +27,7 @@ def init_server(args, net):
         model = net.cuda()
     else:
         model = net
+    size_list = [i.data.numel() for i in net.parameters()]
     threads_num = dist.get_world_size() - 1
     threads = []
     global_model = ravel_model_params(model, cuda=True)
@@ -34,7 +35,7 @@ def init_server(args, net):
     synced_model = global_model.clone()
     for i in range(1, threads_num + 1):
         th = GradientServer(model=model, rank=i, worker_num=args.world_size, global_model=global_model,
-                            synced_model=synced_model)
+                            synced_model=synced_model, size_list=size_list)
         threads.append(th)
         th.start()
     for t in threads:

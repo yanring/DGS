@@ -13,7 +13,8 @@ from torch.multiprocessing import Process
 from distbelief.utils import constant
 from distbelief.utils.messaging import MessageCode, MessageListener, send_message, GSMessageCode, \
     GradientMessageListener
-from distbelief.utils.serialization import ravel_model_params, ravel_sparse_gradient, unravel_sparse_gradient
+from distbelief.utils.serialization import ravel_model_params, ravel_sparse_gradient, unravel_sparse_gradient, \
+    server_gradient_filter
 
 _LOGGER = logging.getLogger(__name__)
 cond = threading.Condition()
@@ -163,7 +164,7 @@ global_lr = 0.1
 class GradientServer(GradientMessageListener):
     """GradientServer"""
 
-    def __init__(self, model, rank=0, worker_num=None, global_model=None, synced_model=None):
+    def __init__(self, model, rank=0, worker_num=None, global_model=None, synced_model=None, size_list=None):
         _LOGGER.info("Creating GradientServer")
         print("Creating GradientServer")
         # self.gradient_warehouse = gradient_warehouse
@@ -180,6 +181,7 @@ class GradientServer(GradientMessageListener):
         self.acc_send_grad = synced_model.clone().zero_()
         self.acc_send_grad.share_memory_()
         self.agg_gradient = None
+        self.size_list = size_list
         self.send_grad = self.acc_send_grad.clone()
         self.cuda = self.synced_model.is_cuda
         if rank == 1:
@@ -241,7 +243,7 @@ class GradientServer(GradientMessageListener):
                 un_synced_worker.remove(sender)
             else:
                 self.send_grad = self.agg_gradient.add(-1, self.acc_send_grad)
-                # server_gradient_filter(self.size_list, self.send_grad, rate=0.01)
+                server_gradient_filter(self.size_list, self.send_grad, rate=0.01)
                 # end = time.time()
                 # print(abs(self.send_grad).sum())
                 # print('server cal cost time : %f' % (end - start))
