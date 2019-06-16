@@ -1,11 +1,13 @@
-import sys
-import time
-
 import logging
 import os
+import sys
 import threading
-import torch.distributed as dist
+import time
+from datetime import datetime
 from queue import Queue
+
+import torch
+import torch.distributed as dist
 from torch.optim.optimizer import Optimizer, required
 
 from distbelief.utils.messaging import send_message, GSMessageCode, GradientMessageListener
@@ -42,6 +44,8 @@ class GradientListener(GradientMessageListener):
         elif message_code == GSMessageCode.SparseGradientUpdate:
             parameter = unravel_sparse_gradient(parameter).cuda()
             update_model_params(self.model, parameter, -1)
+            # print('4',parameter.sum())
+
             self.version = gradient_version
             self.queue.put(gradient_version)
         elif message_code == GSMessageCode.ModelRequest:
@@ -49,7 +53,7 @@ class GradientListener(GradientMessageListener):
             send_message(GSMessageCode.ModelUpdate, model, dst=0, gradient_version=0)
             print('send model to server')
         elif message_code == GSMessageCode.ModelUpdate:
-            # print('sync model!', gradient_version, ' ', datetime.now(), ' synced model :', parameter.sum())
+            print('sync model!', gradient_version, ' ', datetime.now(), ' synced model :', parameter.sum())
             unravel_model_params(self.model, parameter)
             self.version = gradient_version
             self.flag = True
@@ -70,11 +74,9 @@ class GradientSGD(Optimizer):
         :param n_pull:
         :param model:
         """
-        dist.init_process_group('tcp', init_method='file://%s/sharedfile' % WORKPATH, group_name='mygroup',
-                                world_size=args.world_size, rank=args.rank)
+        print('in my optimizer ')
         if lr is not required and lr < 0.0:
             raise ValueError("Invalid learning rate: {}".format(lr))
-        print('I am node rank:%d' % dist.get_rank())
         defaults = dict(lr=lr, )
         self.model = model
         self.filter_gradient = ravel_model_params(model)
@@ -84,8 +86,12 @@ class GradientSGD(Optimizer):
         self.idx = 0
         self.version = 0
         self.queue = Queue(maxsize=1)
-        self.listener = GradientListener(model, self.queue)
-        self.listener.start()
+        if not args.no_distributed:
+            dist.init_process_group('tcp', init_method='file://%s/sharedfile' % WORKPATH, group_name='mygroup',
+                                    world_size=args.world_size, rank=args.rank)
+            print('I am node rank:%d' % dist.get_rank())
+            self.listener = GradientListener(model, self.queue)
+            self.listener.start()
         self.tmp = 0
         self.compress_ratio = None
         self.weight_decay = weight_decay
@@ -103,13 +109,13 @@ class GradientSGD(Optimizer):
         loss = None
         if closure is not None:
             loss = closure()
-
-        if not self.listener.flag:
-            time.sleep(1)
+        if not self.args.no_distributed and not self.listener.flag:
+            while not self.args.no_distributed and not self.listener.flag:
+                time.sleep(1)
             return loss
 
         # get the lr
-        if dist.get_rank() == 1:
+        if self.args.rank == 1:
             lr = self.param_groups[0]['lr']
             # lr = 0.2
         else:
@@ -128,16 +134,19 @@ class GradientSGD(Optimizer):
             self.filter_gradient = ravel_model_params(self.model, grads=True, cuda=True).mul_(lr)
             send_message(GSMessageCode.GradientUpdate, self.filter_gradient, dst=0,
                          gradient_version=self.listener.version + 1)
+            self.version = self.queue.get()
+            self.idx += 1
+            return loss
         elif self.args.mode == 'gradient_sgd':
             if self.version < 5:
                 print('Running gradient_sgd')
             raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, self.u_kt, self.v_kt,
-                                                         rate=0.4 * lr / (self.args.world_size - 1),
+                                                         # rate=0.04 * (lr/self.args.lr) / (self.args.world_size - 1),
+                                                         rate=1,
                                                          lr=lr, momentum=self.momentum, weight_decay=self.weight_decay)
-
+            # print(1,raveled_gradients.sum())
             sparse_gradient = ravel_sparse_gradient(raveled_gradients)
-            send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst=0,
-                         gradient_version=self.listener.version + 1, lr=lr)
+
         elif self.args.mode == 'dgc':
             if self.version < 5:
                 print('Running dgc')
@@ -145,8 +154,6 @@ class GradientSGD(Optimizer):
                                     rate=self.compress_ratio,
                                     lr=lr, momentum=self.momentum)
             sparse_gradient = ravel_sparse_gradient(raveled_gradients)
-            send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst=0,
-                         gradient_version=self.listener.version + 1, lr=lr)
         elif self.args.mode == 'aji':
             if self.version < 5:
                 print('Running aji ', self.version)
@@ -154,9 +161,44 @@ class GradientSGD(Optimizer):
                                     rate=0.01,
                                     lr=lr, momentum=self.momentum)
             sparse_gradient = ravel_sparse_gradient(raveled_gradients)
+        elif self.args.mode == 'sgd':
+            for group in self.param_groups:
+                weight_decay = 0.9
+                momentum = 0
+                dampening = 0
+                nesterov = 0
+
+                for p in group['params']:
+                    if p.grad is None:
+                        continue
+                    d_p = p.grad.data
+                    if weight_decay != 0:
+                        d_p.add_(weight_decay, p.data)
+                    if momentum != 0:
+                        param_state = self.state[p]
+                        if 'momentum_buffer' not in param_state:
+                            buf = param_state['momentum_buffer'] = torch.zeros_like(p.data)
+                            buf.mul_(momentum).add_(d_p)
+                        else:
+                            buf = param_state['momentum_buffer']
+                            buf.mul_(momentum).add_(1 - dampening, d_p)
+                        if nesterov:
+                            d_p = d_p.add(momentum, buf)
+                        else:
+                            d_p = buf
+
+                    p.data.add_(-lr, d_p)
+        else:
+            raise Exception('no optimizer')
+        # reset gradient version
+        if self.args.no_distributed:
+            # parameter = unravel_sparse_gradient(sparse_gradient).cuda()
+            # update_model_params(self.model, raveled_gradients, 1)
+            # self.version = gradient_version
+            self.queue.put(self.idx)
+        else:
             send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst=0,
                          gradient_version=self.listener.version + 1, lr=lr)
-        # reset gradient version
         self.version = self.queue.get()
         self.idx += 1
         return loss

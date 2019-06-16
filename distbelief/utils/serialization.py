@@ -242,13 +242,19 @@ def ravel_sparse_gradient(temp_param):
     # temp_param[abs(temp_param) < threshold] = 0
     indices = temp_param.nonzero()
     values = temp_param[indices]
+
+    # print('len',len(temp_param))
     # if len(indices) > 3000000:
     #     print("why???", len(indices), values.sum())
     #     return torch.FloatTensor([1, 0.1])
     # value = temp_param[temp_param != 0]
     # print(values.sum())
     # size = indices.numel()
-    sparse_gradient = torch.cat((indices.float(), values)).view(-1)
+    sparse_gradient = torch.cat((indices.double(), values.double())).view(-1)
+    # if indices[-1] >= 41187966:
+    # print(sum(indices))
+    #     print(sparse_gradient[int(len(sparse_gradient) / 2)-5:int(len(sparse_gradient) / 2)])
+    # print(values[-5:])
     # print(indices.t().size(),values.view(-1).size(),temp_param.size())
     return sparse_gradient
 
@@ -259,11 +265,14 @@ def unravel_sparse_gradient(sparse_gradient):
     i = sparse_gradient[:split]
     v = sparse_gradient[split:]
     size = torch.Size([constant.MODEL_SIZE])
+    # print('3',v.sum())
     try:
-        dense_gradient = torch.sparse.FloatTensor(i.reshape(1, -1).long(), v, size).to_dense()
+        dense_gradient = torch.sparse.FloatTensor(i.reshape(1, -1).long(), v.float(), size).to_dense()
     except Exception as e:
-        print(e)
-        print(size, constant.MODEL_SIZE, i[:20])
+        print(i, v)
+        print('sum indice', sum(i))
+        raise (e)
+        print(size, constant.MODEL_SIZE, i[-5:], v[-5:])
         dense_gradient = torch.FloatTensor(size).zero_()
 
     # print(dense_gradient.sum())

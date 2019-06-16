@@ -1,8 +1,12 @@
-numpy==1.14.5
+numpy
 six==1.11.0
-torch
-torchvision
-matplotlib
 pandas
 sklearn
 scipy
+python-levenshtein
+torch-baidu-ctc==0.1.1
+#torchaudio git 301e2e9
+visdom
+wget
+librosa
+tqdm

@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+
 from torch.optim.lr_scheduler import MultiStepLR
 
 from distbelief.utils.GradualWarmupScheduler import GradualWarmupScheduler
@@ -8,21 +9,14 @@ from distbelief.utils.GradualWarmupScheduler import GradualWarmupScheduler
 WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(WORKPATH)
 
-from distbelief.utils.serialization import ravel_model_params
-
-from distbelief.utils import constant
-
 import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data.distributed import DistributedSampler
-from distbelief.optim import GradientSGD
 
 from datetime import datetime
 from example.models import *
 from sklearn.metrics import classification_report, accuracy_score
 import pandas as pd
-
-import torch.optim as optim
 
 
 def get_dataset(args, transform_train, transform_test):
@@ -50,7 +44,7 @@ def get_dataset(args, transform_train, transform_test):
     return trainloader, testloader
 
 
-def cifar10(args):
+def init_net(args):
     if args.model == 'AlexNet':
         net = AlexNet()
     elif args.model == 'ResNet18':
@@ -62,9 +56,16 @@ def cifar10(args):
     elif args.model == 'ResNet101':
         net = ResNet101()
         args.test_batch_size = 500
+    if args.cuda:
+        net = net.cuda()
+    if args.no_distributed and args.half:
+        net = net.half()
+    return net
+
+
+def cifar10(args, optimizer, net):
 
     logs = []
-
     transform_train = transforms.Compose([
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
@@ -77,22 +78,10 @@ def cifar10(args):
         transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
     ])
     trainloader, testloader = get_dataset(args, transform_train, transform_test)
-    if args.cuda:
-        net = net.cuda()
+
     if args.warmup:
         args.lr = args.lr / 10
-    constant.MODEL_SIZE = ravel_model_params(net).numel()
-    if args.no_distributed and args.half:
-        net = net.half()
 
-    if args.no_distributed:
-        optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=5e-4)
-    else:
-        print('distributed model')
-        optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net, momentum=args.momentum,
-                                weight_decay=5e-4 * (args.world_size - 1) / 4,
-                                # weight_decay=5e-6,
-                                args=args)
         # optimizer = DownpourSGD(net.parameters(), lr=args.lr, n_push=args.num_push, n_pull=args.num_pull, model=net)
     # scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=3, cooldown=1, verbose=True, factor=0.25)
     scheduler = MultiStepLR(optimizer, milestones=[30, 40], gamma=0.1)
@@ -141,7 +130,7 @@ def cifar10(args):
                 'training_loss': loss.item(),
                 'training_accuracy': accuracy,
             }
-            if i % 80 == 0:
+            if i % 20 == 0:
                 print("Timestamp: {timestamp} | "
                       "Iteration: {iteration:6} | "
                       "Loss: {training_loss:6.4f} | "

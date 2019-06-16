@@ -5,6 +5,7 @@ Parameter server for distbelief
 import logging
 import threading
 import time
+
 import torch
 import torch.optim
 from torch.multiprocessing import Process
@@ -12,8 +13,7 @@ from torch.multiprocessing import Process
 from distbelief.utils import constant
 from distbelief.utils.messaging import MessageCode, MessageListener, send_message, GSMessageCode, \
     GradientMessageListener
-from distbelief.utils.serialization import ravel_model_params, ravel_sparse_gradient, unravel_sparse_gradient, \
-    server_gradient_filter
+from distbelief.utils.serialization import ravel_model_params, ravel_sparse_gradient, unravel_sparse_gradient
 
 _LOGGER = logging.getLogger(__name__)
 cond = threading.Condition()
@@ -157,7 +157,7 @@ class GradientExecutor(Process):
 
 un_synced_worker = set()
 
-global_lr = 0.1
+global_lr = 0.001
 
 
 class GradientServer(GradientMessageListener):
@@ -221,9 +221,9 @@ class GradientServer(GradientMessageListener):
 
         if message_code == GSMessageCode.GradientUpdate:
             if self.cuda:
-                self.update(sender, gradient_version, parameter.cuda())
+                self.update(sender, gradient_version, parameter.cuda().float())
             else:
-                self.update(sender, gradient_version, parameter)
+                self.update(sender, gradient_version, parameter.float())
 
             send_message(GSMessageCode.ModelUpdate, self.global_model, dst=sender,
                          gradient_version=gradient_version)
@@ -242,12 +242,14 @@ class GradientServer(GradientMessageListener):
                 un_synced_worker.remove(sender)
             else:
                 self.send_grad = self.agg_gradient.add(-1, self.acc_send_grad)
-                server_gradient_filter(self.size_list, self.send_grad, rate=0.1 * global_lr)
+                # server_gradient_filter(self.size_list, self.send_grad, rate=0.1 * global_lr)
                 # end = time.time()
+
                 # print(abs(self.send_grad).sum())
                 # print('server cal cost time : %f' % (end - start))
                 send_message(GSMessageCode.SparseGradientUpdate, ravel_sparse_gradient(self.send_grad), sender,
                              gradient_version, lr=global_lr)
+
                 self.acc_send_grad.add_(self.send_grad)
 
         else:

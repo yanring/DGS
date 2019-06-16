@@ -1,14 +1,14 @@
-import time
-
 import logging
 import os
 import queue
 import socket
-import torch
-import torch.distributed as dist
+import time
 from enum import Enum
 from multiprocessing.managers import BaseManager
 from threading import Thread
+
+import torch
+import torch.distributed as dist
 
 from distbelief.utils.serialization import ravel_model_params
 
@@ -187,7 +187,7 @@ class GradientMessageListener(Thread):
         # self.model = model
         self.source = source
         _LOGGER.info("Setting m_parameter")
-        self.m_parameter = torch.zeros(model_size + 3)
+        self.m_parameter = torch.zeros(model_size + 4).double()
         self.cached_stamp = 0
         self.size_filename = None
         self.manager = None
@@ -221,14 +221,17 @@ class GradientMessageListener(Thread):
                 # if dist.get_rank() == 0:
                 # print('RECEIVING MESSAGE %dto%d.size:%d,' % (
                 #     self.source, dist.get_rank(), size))
-                self.m_parameter = torch.zeros(size + 4)
+                self.m_parameter = torch.zeros(size + 4).double()
                 try:
                     sender = dist.recv(tensor=self.m_parameter, src=self.source)
                 except Exception as e:
-                    print('Exception :', e)
+                    # print('Exception :', e)
+                    raise e
                     time.sleep(0.5)
                     continue
                 self.m_parameter = self.m_parameter
+                # if dist.get_rank() == 0:
+                #     print('run',self.m_parameter[int(len(self.m_parameter) / 2)-3:int(len(self.m_parameter) / 2)+2],self.m_parameter[int(len(self.m_parameter) / 2)-3:int(len(self.m_parameter) / 2)+2].long())
                 self.receive(int(self.m_parameter[0].item()),
                              GSMessageCode(self.m_parameter[1].item()),
                              int(self.m_parameter[2].item()),
@@ -278,7 +281,7 @@ class GradientMessageListener(Thread):
         else:
             time.sleep(10)
             print('queue init in th')
-            self.manager = QueueManager(address=('89.72.3.18', 5000), authkey=b'abc')
+            self.manager = QueueManager(address=('89.72.3.16', 5000), authkey=b'abc')
         try:
             self.manager.connect()
         except Exception as e:
@@ -406,8 +409,8 @@ def send_message(message_code, payload, dst=0, gradient_version=None, lr=0.1):
     if payload.is_cuda:
         payload = payload.cpu()
     size = str(payload.numel())
-    payload = torch.cat((m_parameter, payload))
-    if dist.get_rank() == 0 or 'gn' in socket.gethostname():
+    payload = torch.cat((m_parameter.double(), payload.double()))
+    if dist.get_rank() == 0 and dist.get_world_size() > 5:
         print('%s SENDING MESSAGE %s gradient_version %d, %dto%d.size:%d' % (
             str(time.time()), message_code, gradient_version, dist.get_rank(), dst, payload.numel()))
     # with open('%dto%d.size' % (dist.get_rank(), dst), 'a') as f:
