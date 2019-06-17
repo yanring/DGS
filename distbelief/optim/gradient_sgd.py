@@ -6,7 +6,6 @@ import time
 from datetime import datetime
 from queue import Queue
 
-import torch
 import torch.distributed as dist
 from torch.optim.optimizer import Optimizer, required
 
@@ -86,7 +85,7 @@ class GradientSGD(Optimizer):
         self.idx = 0
         self.version = 0
         self.queue = Queue(maxsize=1)
-        if not args.no_distributed:
+        if not args.no_distributed and args.rank > 0:
             dist.init_process_group('tcp', init_method='file://%s/sharedfile' % WORKPATH, group_name='mygroup',
                                     world_size=args.world_size, rank=args.rank)
             print('I am node rank:%d' % dist.get_rank())
@@ -95,7 +94,7 @@ class GradientSGD(Optimizer):
         self.tmp = 0
         self.compress_ratio = None
         self.weight_decay = weight_decay
-        print('weight_decay', self.weight_decay)
+        print('weight_decay', self.weight_decay, 'lr', lr, 'momentum', self.momentum)
         self.args = args
         super(GradientSGD, self).__init__(params, defaults)
 
@@ -111,6 +110,7 @@ class GradientSGD(Optimizer):
             loss = closure()
         if not self.args.no_distributed and not self.listener.flag:
             while not self.args.no_distributed and not self.listener.flag:
+                print('wait for server')
                 time.sleep(1)
             return loss
 
@@ -123,9 +123,9 @@ class GradientSGD(Optimizer):
                 print('lr from %f to %f' % (self.tmp, self.listener.lr))
                 self.tmp = self.listener.lr
                 self.param_groups[0]['lr'] = self.tmp
-            lr = self.listener.lr
-            # print(lr)
-
+            lr = self.param_groups[0]['lr']
+        # print(lr)
+        # lr = self.param_groups[0]['lr']
         # keep track of accumulated gradients so that we can send
         # ASYNC
         if self.args.mode == 'asgd':
@@ -141,8 +141,8 @@ class GradientSGD(Optimizer):
             if self.version < 5:
                 print('Running gradient_sgd')
             raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, self.u_kt, self.v_kt,
-                                                         # rate=0.04 * (lr/self.args.lr) / (self.args.world_size - 1),
-                                                         rate=1,
+                                                         rate=0.04 * (lr / self.args.lr) / (self.args.world_size - 1),
+                                                         # rate=0.01,
                                                          lr=lr, momentum=self.momentum, weight_decay=self.weight_decay)
             # print(1,raveled_gradients.sum())
             sparse_gradient = ravel_sparse_gradient(raveled_gradients)
@@ -151,7 +151,8 @@ class GradientSGD(Optimizer):
             if self.version < 5:
                 print('Running dgc')
             raveled_gradients = DGC(self.model, self.filter_gradient, self.u_kt, self.v_kt,
-                                    rate=self.compress_ratio,
+                                    rate=0.01,
+                                    # rate=self.compress_ratio,
                                     lr=lr, momentum=self.momentum)
             sparse_gradient = ravel_sparse_gradient(raveled_gradients)
         elif self.args.mode == 'aji':
@@ -162,38 +163,43 @@ class GradientSGD(Optimizer):
                                     lr=lr, momentum=self.momentum)
             sparse_gradient = ravel_sparse_gradient(raveled_gradients)
         elif self.args.mode == 'sgd':
-            for group in self.param_groups:
-                weight_decay = 0.9
-                momentum = 0
-                dampening = 0
-                nesterov = 0
-
-                for p in group['params']:
-                    if p.grad is None:
-                        continue
-                    d_p = p.grad.data
-                    if weight_decay != 0:
-                        d_p.add_(weight_decay, p.data)
-                    if momentum != 0:
-                        param_state = self.state[p]
-                        if 'momentum_buffer' not in param_state:
-                            buf = param_state['momentum_buffer'] = torch.zeros_like(p.data)
-                            buf.mul_(momentum).add_(d_p)
-                        else:
-                            buf = param_state['momentum_buffer']
-                            buf.mul_(momentum).add_(1 - dampening, d_p)
-                        if nesterov:
-                            d_p = d_p.add(momentum, buf)
-                        else:
-                            d_p = buf
-
-                    p.data.add_(-lr, d_p)
+            if self.version < 5:
+                print('Running sgd')
+            weight_decay = self.weight_decay
+            momentum = self.momentum
+            dampening = 0
+            nesterov = 0
+            # for group in self.param_groups:
+            #     for p in group['params']:
+            #         if p.grad is None:
+            #             continue
+            #         d_p = p.grad.data
+            #         if weight_decay != 0:
+            #             d_p.add_(weight_decay, p.data)
+            #         if momentum != 0:
+            #             param_state = self.state[p]
+            #             if 'momentum_buffer' not in param_state:
+            #                 buf = param_state['momentum_buffer'] = torch.zeros_like(p.data)
+            #                 buf.mul_(momentum).add_(d_p)
+            #             else:
+            #                 buf = param_state['momentum_buffer']
+            #                 buf.mul_(momentum).add_(1 - dampening, d_p)
+            #             if nesterov:
+            #                 d_p = d_p.add(momentum, buf)
+            #             else:
+            #                 d_p = buf
+            # p.data.add_(-group['lr'], d_p)
+            g = ravel_model_params(self.model, grads=True)
+            p = ravel_model_params(self.model, grads=False)
+            g.add_(weight_decay, p)
+            self.u_kt.mul_(momentum).add_(g)
+            raveled_gradients = self.u_kt.mul(lr)
         else:
             raise Exception('no optimizer')
         # reset gradient version
         if self.args.no_distributed:
             # parameter = unravel_sparse_gradient(sparse_gradient).cuda()
-            # update_model_params(self.model, raveled_gradients, 1)
+            update_model_params(self.model, raveled_gradients, 1)
             # self.version = gradient_version
             self.queue.put(self.idx)
         else:

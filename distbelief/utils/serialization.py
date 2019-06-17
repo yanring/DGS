@@ -79,7 +79,7 @@ def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, moment
     :param rate: compression rate
     :return: gradients which lager than threshold
     """
-    start = time.time()
+    # start = time.time()
     current_index = 0
     u_kt.mul_(momentum)
     for param in net.parameters():
@@ -89,19 +89,15 @@ def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, moment
             param.grad.data.add_(weight_decay, param.data)
         layer_u_kt.add_(param.grad.data.view(-1))
         k = int(numel * rate) if int(numel * rate) != 0 else 1
-        topn = [[1.0]]
-        try:
-            topn = torch.topk(abs(layer_u_kt), k)
-        except Exception as e:
-            print(e)
-            print(k, layer_u_kt.nelement())
-            return payload
+        topn = torch.topk(abs(layer_u_kt), k)
         threshold = float(topn[0][-1])
-        mask = (abs(layer_u_kt) > threshold).float()
+        mask = (abs(layer_u_kt) >= threshold).float()
+        # print(mask.sum()-len(layer_u_kt))
         payload[current_index:current_index + numel].copy_(layer_u_kt.mul(mask).mul(lr))
-        layer_u_kt.copy_(layer_u_kt.mul(1 - mask).mul(1 / momentum))
+        layer_u_kt.add_(layer_u_kt.mul(1 - mask).mul(1 / momentum - 1))
+        # print(layer_u_kt.sum())
         current_index += numel
-    end = time.time()
+    # end = time.time()
     return payload
 
 

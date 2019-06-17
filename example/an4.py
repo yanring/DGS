@@ -1,5 +1,4 @@
 import json
-import json
 import os
 import sys
 import time
@@ -163,6 +162,8 @@ def an4(args, optimizer, net):
                 'sparse_param': Sparse_param_num,
                 'mini_batch_time': (time.time() - batch_start_time)
             }
+            logs.append(log_obj)
+
 
             if i % 5 == 0:
                 print("Timestamp: {timestamp} | "
@@ -172,7 +173,6 @@ def an4(args, optimizer, net):
                       "Sparse_param: {sparse_param:6} | "
                       "Mini_Batch_Time: {mini_batch_time:6.4f} | ".format(**log_obj))
 
-            logs.append(log_obj)
 
         # if True:
         test_wer, test_cer = evaluate(net, test_loader)
