@@ -3,10 +3,9 @@ import os
 import sys
 import threading
 import time
+import torch.distributed as dist
 from datetime import datetime
 from queue import Queue
-
-import torch.distributed as dist
 from torch.optim.optimizer import Optimizer, required
 
 from distbelief.utils.messaging import send_message, GSMessageCode, GradientMessageListener
@@ -111,25 +110,26 @@ class GradientSGD(Optimizer):
         if not self.args.no_distributed and not self.listener.flag:
             while not self.args.no_distributed and not self.listener.flag:
                 print('wait for server')
-                time.sleep(1)
+                time.sleep(5)
             return loss
 
         # get the lr
-        if self.args.rank == 1:
-            lr = self.param_groups[0]['lr']
-            # lr = 0.2
-        else:
-            if self.tmp != self.listener.lr:
-                print('lr from %f to %f' % (self.tmp, self.listener.lr))
-                self.tmp = self.listener.lr
-                self.param_groups[0]['lr'] = self.tmp
-            lr = self.param_groups[0]['lr']
+        # if self.args.rank == 1:
+        #     lr = self.param_groups[0]['lr']
+        #     # lr = 0.2
+        # else:
+        #     if self.tmp != self.listener.lr:
+        #         print('lr from %f to %f' % (self.tmp, self.listener.lr))
+        #         self.tmp = self.listener.lr
+        #         self.param_groups[0]['lr'] = self.tmp
+        #     lr = self.param_groups[0]['lr']
         # print(lr)
-        # lr = self.param_groups[0]['lr']
+        lr = self.param_groups[0]['lr']
         # keep track of accumulated gradients so that we can send
         # ASYNC
         if self.args.mode == 'asgd':
-            print('Running asgd')
+            if self.version < 2:
+                print('Running asgd')
 
             self.filter_gradient = ravel_model_params(self.model, grads=True, cuda=True).mul_(lr)
             send_message(GSMessageCode.GradientUpdate, self.filter_gradient, dst=0,
@@ -138,14 +138,21 @@ class GradientSGD(Optimizer):
             self.idx += 1
             return loss
         elif self.args.mode == 'gradient_sgd':
-            if self.version < 5:
+            if self.version < 2:
                 print('Running gradient_sgd')
+            if self.version < 44 * 10:
+                rate = 1
+                # print(self.version)
+            else:
+                if self.version % 221 == 1:
+                    print(self.version)
+                rate = 0.01
             raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, self.u_kt, self.v_kt,
-                                                         rate=0.04 * (lr / self.args.lr) / (self.args.world_size - 1),
-                                                         # rate=0.01,
+                                                         # rate=0.04 * (lr / self.args.lr) / (self.args.world_size - 1),
+                                                         rate=rate,
                                                          lr=lr, momentum=self.momentum, weight_decay=self.weight_decay)
             # print(1,raveled_gradients.sum())
-            sparse_gradient = ravel_sparse_gradient(raveled_gradients)
+            # sparse_gradient = ravel_sparse_gradient(raveled_gradients)
 
         elif self.args.mode == 'dgc':
             if self.version < 5:

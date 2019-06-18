@@ -36,7 +36,8 @@ if __name__ == '__main__':
             len(hosts)) + ' --cuda %s'
         # command = '/home/yan/anaconda3/bin/python /share/distbelief/example/main.py --mode gradient_sgd --world-size ' + str(len(hosts)) + ' --cuda %s'
         # command = '/home/yan/anaconda3/envs/an4/bin/python /share/distbelief/example/main.py  --dataset an4 --mode gradient_sgd --world-size ' + str(len(hosts)) + ' --cuda %s'
-        # command = '/home/yan/anaconda3/envs/an4/bin/python /share/distbelief/example/main.py  --dataset an4 --mode aji --world-size ' + str(len(hosts)) + ' --cuda %s'
+        command = '/home/yan/anaconda3/envs/an4/bin/python /share/distbelief/deepspeech/train.py --cuda --learning-anneal 1.01 --augment --batch-size 5 --world-size ' + str(
+            len(hosts)) + ' --cuda %s'
     else:
         hosts = ['gn16', 'gn17', 'gn17', 'gn18', 'gn18']
         client = ParallelSSHClient(hosts, )
