@@ -93,9 +93,9 @@ class GradientSGD(Optimizer):
         self.tmp = 0
         self.compress_ratio = None
         self.weight_decay = weight_decay
-        print('weight_decay', self.weight_decay, 'lr', lr, 'momentum', self.momentum)
         self.args = args
         super(GradientSGD, self).__init__(params, defaults)
+        print('weight_decay', self.weight_decay, 'lr', self.param_groups[0]['lr'], 'momentum', self.momentum)
 
     def step(self, closure=None):
         """Performs a single optimization step.
@@ -114,17 +114,17 @@ class GradientSGD(Optimizer):
             return loss
 
         # get the lr
-        # if self.args.rank == 1:
-        #     lr = self.param_groups[0]['lr']
-        #     # lr = 0.2
-        # else:
-        #     if self.tmp != self.listener.lr:
-        #         print('lr from %f to %f' % (self.tmp, self.listener.lr))
-        #         self.tmp = self.listener.lr
-        #         self.param_groups[0]['lr'] = self.tmp
-        #     lr = self.param_groups[0]['lr']
+        if self.args.rank == 1:
+            lr = self.param_groups[0]['lr']
+            # lr = 0.2
+        else:
+            if self.tmp != self.listener.lr:
+                print('lr from %f to %f' % (self.tmp, self.listener.lr))
+                self.tmp = self.listener.lr
+                self.param_groups[0]['lr'] = self.tmp
+            lr = self.param_groups[0]['lr']
         # print(lr)
-        lr = self.param_groups[0]['lr']
+        # lr = self.param_groups[0]['lr']
         # keep track of accumulated gradients so that we can send
         # ASYNC
         if self.args.mode == 'asgd':
@@ -141,7 +141,7 @@ class GradientSGD(Optimizer):
             if self.version < 2:
                 print('Running gradient_sgd')
             if self.version < 44 * 10:
-                rate = 1
+                rate = 0.1
                 # print(self.version)
             else:
                 if self.version % 221 == 1:
@@ -149,10 +149,11 @@ class GradientSGD(Optimizer):
                 rate = 0.01
             raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, self.u_kt, self.v_kt,
                                                          # rate=0.04 * (lr / self.args.lr) / (self.args.world_size - 1),
-                                                         rate=rate,
+                                                         rate=0.01,
                                                          lr=lr, momentum=self.momentum, weight_decay=self.weight_decay)
             # print(1,raveled_gradients.sum())
-            # sparse_gradient = ravel_sparse_gradient(raveled_gradients)
+            if not self.args.no_distributed:
+                sparse_gradient = ravel_sparse_gradient(raveled_gradients)
 
         elif self.args.mode == 'dgc':
             if self.version < 5:

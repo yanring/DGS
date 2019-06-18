@@ -1,5 +1,4 @@
 import time
-
 import torch
 
 from distbelief.utils import constant
@@ -87,13 +86,13 @@ def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, moment
         layer_u_kt = u_kt[current_index:current_index + numel]
         if weight_decay != 0:
             param.grad.data.add_(weight_decay, param.data)
-        layer_u_kt.add_(param.grad.data.view(-1))
+        layer_u_kt.add_(param.grad.data.view(-1).mul(lr))
         k = int(numel * rate) if int(numel * rate) != 0 else 1
         topn = torch.topk(abs(layer_u_kt), k)
         threshold = float(topn[0][-1])
         mask = (abs(layer_u_kt) >= threshold).float()
         # print(mask.sum()-len(layer_u_kt))
-        payload[current_index:current_index + numel].copy_(layer_u_kt.mul(mask).mul(lr))
+        payload[current_index:current_index + numel].copy_(layer_u_kt.mul(mask))
         layer_u_kt.add_(layer_u_kt.mul(1 - mask).mul(1 / momentum - 1))
         # print(layer_u_kt.sum())
         current_index += numel
