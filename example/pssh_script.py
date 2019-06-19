@@ -32,11 +32,12 @@ if __name__ == '__main__':
                                    proxy_host='172.18.233.36', proxy_user='yan',
                                    proxy_port=10000)
         host_args = ['--rank %d' % i for i in range(len(hosts))]
-        command = '/home/yan/anaconda3/bin/python /share/distbelief/example/main.py --dataset cifar10 --mode gradient_sgd --lr 0.1 --world-size ' + str(
-            len(hosts)) + ' --cuda %s'
+        # command = '/home/yan/anaconda3/bin/python /share/distbelief/example/main.py --dataset cifar10 --mode gradient_sgd --lr 0.1 --world-size ' + str(
+        #     len(hosts)) + ' --cuda %s'
         # command = '/home/yan/anaconda3/bin/python /share/distbelief/example/main.py --mode gradient_sgd --world-size ' + str(len(hosts)) + ' --cuda %s'
         # command = '/home/yan/anaconda3/envs/an4/bin/python /share/distbelief/example/main.py  --dataset an4 --mode gradient_sgd --world-size ' + str(len(hosts)) + ' --cuda %s'
-        # command = '/home/yan/anaconda3/envs/an4/bin/python /share/distbelief/example/main.py  --dataset an4 --mode aji --world-size ' + str(len(hosts)) + ' --cuda %s'
+        command = '/home/yan/anaconda3/envs/an4/bin/python /share/distbelief/deepspeech/train.py --cuda --epoch 100 --lr 4e-4 --weight-decay 2e-5 --learning-anneal 1.01 --momentum 0.9 --num-workers 4 --augment --batch-size 5 --world-size ' + str(
+            len(hosts)) + ' --cuda %s'
     else:
         hosts = ['gn16', 'gn17', 'gn17', 'gn18', 'gn18']
         client = ParallelSSHClient(hosts, )
