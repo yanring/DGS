@@ -36,7 +36,7 @@ if __name__ == '__main__':
         #     len(hosts)) + ' --cuda %s'
         # command = '/home/yan/anaconda3/bin/python /share/distbelief/example/main.py --mode gradient_sgd --world-size ' + str(len(hosts)) + ' --cuda %s'
         # command = '/home/yan/anaconda3/envs/an4/bin/python /share/distbelief/example/main.py  --dataset an4 --mode gradient_sgd --world-size ' + str(len(hosts)) + ' --cuda %s'
-        command = '/home/yan/anaconda3/envs/an4/bin/python /share/distbelief/deepspeech/train.py --cuda --epoch 100 --lr 4e-4 --weight-decay 2e-5 --learning-anneal 1.01 --momentum 0.9 --num-workers 4 --augment --batch-size 5 --world-size ' + str(
+        command = '/home/yan/anaconda3/envs/an4/bin/python /share/distbelief/deepspeech/train.py --cuda --epoch 100 --lr 4e-4 --weight-decay 1.5e-5 --learning-anneal 1.01 --momentum 0.7 --num-workers 4 --augment --batch-size 5 --world-size ' + str(
             len(hosts)) + ' --cuda %s'
     else:
         hosts = ['gn16', 'gn17', 'gn17', 'gn18', 'gn18']
