@@ -130,7 +130,7 @@ def cifar10(args, optimizer, net):
                 'training_loss': loss.item(),
                 'training_accuracy': accuracy,
             }
-            if i % 20 == 0:
+            if i % 20 == 0 and False:
                 print("Timestamp: {timestamp} | "
                       "Iteration: {iteration:6} | "
                       "Loss: {training_loss:6.4f} | "
@@ -151,24 +151,24 @@ def cifar10(args, optimizer, net):
         # val_loss, val_accuracy = evaluate(net, testloader, args, verbose=True)
 
         df = pd.DataFrame(logs)
-        if args.rank == 1:
-            if args.no_distributed:
-                if args.cuda:
-                    df.to_csv(
-                        WORKPATH + '/log/tmp_gpu_{}_{}_m{}_e{}_b{}.csv'.format(args.mode, args.model, args.momentum,
-                                                                               args.epochs,
-                                                                               args.batch_size),
-                        index_label='index')
-                else:
-                    df.to_csv(WORKPATH + '/log/tmp_single.csv', index_label='index')
-            else:
-                df.to_csv(
-                    WORKPATH + '/log/tmp_node{}_{}_{}_m{}_e{}_b{}_dual_{}worker.csv'.format(args.rank - 1, args.mode,
-                                                                                            args.model, args.momentum,
-                                                                                            args.epochs,
-                                                                                            args.batch_size,
-                                                                                            args.world_size - 1),
-                    index_label='index')
+        # if args.rank == 1:
+        #     if args.no_distributed:
+        #         if args.cuda:
+        #             df.to_csv(
+        #                 WORKPATH + '/log/tmp_gpu_{}_{}_m{}_e{}_b{}.csv'.format(args.mode, args.model, args.momentum,
+        #                                                                        args.epochs,
+        #                                                                        args.batch_size),
+        #                 index_label='index')
+        #         else:
+        #             df.to_csv(WORKPATH + '/log/tmp_single.csv', index_label='index')
+        #     else:
+        #         df.to_csv(
+        #             WORKPATH + '/log/tmp_node{}_{}_{}_m{}_e{}_b{}_dual_{}worker.csv'.format(args.rank - 1, args.mode,
+        #                                                                                     args.model, args.momentum,
+        #                                                                                     args.epochs,
+        #                                                                                     args.batch_size,
+        #                                                                                     args.world_size - 1),
+        #             index_label='index')
     print(df)
     if args.no_distributed:
         if args.cuda:
