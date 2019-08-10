@@ -1,4 +1,5 @@
 import time
+
 import torch
 
 from distbelief.utils import constant
@@ -100,7 +101,7 @@ def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, moment
     return payload
 
 
-def DGC(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, momentum=None):
+def DGC(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, momentum=None, weight_decay=None):
     """
     :param momentum:
     :param lr:
@@ -119,6 +120,8 @@ def DGC(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, momentum=None):
         numel = param.data.numel()
         layer_u_kt = u_kt[current_index:current_index + numel]
         layer_v_kt = v_kt[current_index:current_index + numel]
+        if weight_decay != 0:
+            param.grad.data.add_(weight_decay, param.data)
         layer_u_kt.add_(param.grad.data.view(-1))
         layer_v_kt.add_(layer_u_kt)
         k = int(numel * rate) if int(numel * rate) != 0 else 1

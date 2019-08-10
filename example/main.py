@@ -73,45 +73,27 @@ if __name__ == "__main__":
             # os.environ['CUDA_VISIBLE_DEVICES'] = '1'
         print('Using device%s, device count:%d' % (os.environ['CUDA_VISIBLE_DEVICES'], torch.cuda.device_count()))
 
-
     net = None
 
     if args.dataset == 'cifar10':
         from example.cifar10 import cifar10, init_net
+
         args.model = 'ResNet18'
         args.momentum = 0.7
         args.half = False
         args.weight_decay = 5e-4
         # args.warmup = True
         net = init_net(args)
-    print('MODEL:%s, momentum:%f' % (args.model, args.momentum))
-    print(args)
-    # print(net)
-    assert net is not None
-    constant.MODEL_SIZE = ravel_model_params(net).numel()
-    optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net, momentum=args.momentum,
-                            weight_decay=args.weight_decay * (args.world_size - 1) / 4,
-                            # weight_decay=5e-6,
-                            args=args)
-    # if not args.no_distributed:
-    #     """ Initialize the distributed environment.
-    #     Server and clients must call this as an entry point.
-    #     """
-    #     print('%s/sharedfile chmod' % WORKPATH)
-    #     if os.path.exists('%s/sharedfile' % WORKPATH):
-    #         try:
-    #             os.chmod('%s/sharedfile' % WORKPATH, 0o777)
-    #             print('%s/sharedfile chmod success' % WORKPATH)
-    #         except Exception as e:
-    #             print(e)
-    #     if args.rank == 0:
-    #         import glob
-    #
-    #         for infile in glob.glob(os.path.join(WORKPATH, '*.size')):
-    #             os.remove(infile)
+        constant.MODEL_SIZE = ravel_model_params(net).numel()
 
-    if args.dataset == 'cifar10':
+        optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net, momentum=args.momentum,
+                                weight_decay=args.weight_decay * (args.world_size - 1) / 4,
+                                # weight_decay=5e-6,
+                                args=args)
         if args.rank == 0 and not args.no_distributed:
             init_server(args, net)
         else:
             cifar10(args, optimizer, net)
+    print('MODEL:%s, momentum:%f' % (args.model, args.momentum))
+    print(args)
+    assert net is not None

@@ -4,12 +4,10 @@ Parameter server for distbelief
 """
 import logging
 import threading
-import time
+
 import torch
 import torch.optim
-from torch.multiprocessing import Process
 
-from distbelief.utils import constant
 from distbelief.utils.messaging import MessageCode, MessageListener, send_message, GSMessageCode, \
     GradientMessageListener
 from distbelief.utils.serialization import ravel_model_params, ravel_sparse_gradient, unravel_sparse_gradient
