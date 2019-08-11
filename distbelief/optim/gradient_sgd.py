@@ -3,9 +3,10 @@ import os
 import sys
 import threading
 import time
-import torch.distributed as dist
 from datetime import datetime
 from queue import Queue
+
+import torch.distributed as dist
 from torch.optim.optimizer import Optimizer, required
 
 from distbelief.utils.messaging import send_message, GSMessageCode, GradientMessageListener
@@ -93,9 +94,9 @@ class GradientSGD(Optimizer):
         self.tmp = 0
         self.compress_ratio = None
         self.weight_decay = weight_decay
+        print('weight_decay', self.weight_decay, 'lr', lr, 'momentum', self.momentum)
         self.args = args
         super(GradientSGD, self).__init__(params, defaults)
-        print('weight_decay', self.weight_decay, 'lr', self.param_groups[0]['lr'], 'momentum', self.momentum)
 
     def step(self, closure=None):
         """Performs a single optimization step.
@@ -110,7 +111,7 @@ class GradientSGD(Optimizer):
         if not self.args.no_distributed and not self.listener.flag:
             while not self.args.no_distributed and not self.listener.flag:
                 print('wait for server')
-                time.sleep(5)
+                time.sleep(1)
             return loss
 
         # get the lr
@@ -128,8 +129,7 @@ class GradientSGD(Optimizer):
         # keep track of accumulated gradients so that we can send
         # ASYNC
         if self.args.mode == 'asgd':
-            if self.version < 2:
-                print('Running asgd')
+            print('Running asgd')
 
             self.filter_gradient = ravel_model_params(self.model, grads=True, cuda=True).mul_(lr)
             send_message(GSMessageCode.GradientUpdate, self.filter_gradient, dst=0,
@@ -138,22 +138,18 @@ class GradientSGD(Optimizer):
             self.idx += 1
             return loss
         elif self.args.mode == 'gradient_sgd':
-            if self.version < 2:
+            if self.version < 5:
                 print('Running gradient_sgd')
-            if self.version < 44 * 10:
-                rate = 0.1
-                # print(self.version)
+            if self.version < 900:
+                weight_decay = 0
             else:
-                if self.version % 221 == 1:
-                    print(self.version)
-                rate = 0.01
+                weight_decay = self.weight_decay
             raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, self.u_kt, self.v_kt,
                                                          # rate=0.04 * (lr / self.args.lr) / (self.args.world_size - 1),
                                                          rate=0.01,
-                                                         lr=lr, momentum=self.momentum, weight_decay=self.weight_decay)
+                                                         lr=lr, momentum=self.momentum, weight_decay=weight_decay)
             # print(1,raveled_gradients.sum())
-            if not self.args.no_distributed:
-                sparse_gradient = ravel_sparse_gradient(raveled_gradients)
+            sparse_gradient = ravel_sparse_gradient(raveled_gradients)
 
         elif self.args.mode == 'dgc':
             if self.version < 5:
@@ -161,7 +157,7 @@ class GradientSGD(Optimizer):
             raveled_gradients = DGC(self.model, self.filter_gradient, self.u_kt, self.v_kt,
                                     rate=0.01,
                                     # rate=self.compress_ratio,
-                                    lr=lr, momentum=self.momentum)
+                                    lr=lr, momentum=self.momentum, weight_decay=self.weight_decay)
             sparse_gradient = ravel_sparse_gradient(raveled_gradients)
         elif self.args.mode == 'aji':
             if self.version < 5:
@@ -177,26 +173,6 @@ class GradientSGD(Optimizer):
             momentum = self.momentum
             dampening = 0
             nesterov = 0
-            # for group in self.param_groups:
-            #     for p in group['params']:
-            #         if p.grad is None:
-            #             continue
-            #         d_p = p.grad.data
-            #         if weight_decay != 0:
-            #             d_p.add_(weight_decay, p.data)
-            #         if momentum != 0:
-            #             param_state = self.state[p]
-            #             if 'momentum_buffer' not in param_state:
-            #                 buf = param_state['momentum_buffer'] = torch.zeros_like(p.data)
-            #                 buf.mul_(momentum).add_(d_p)
-            #             else:
-            #                 buf = param_state['momentum_buffer']
-            #                 buf.mul_(momentum).add_(1 - dampening, d_p)
-            #             if nesterov:
-            #                 d_p = d_p.add(momentum, buf)
-            #             else:
-            #                 d_p = buf
-            # p.data.add_(-group['lr'], d_p)
             g = ravel_model_params(self.model, grads=True)
             p = ravel_model_params(self.model, grads=False)
             g.add_(weight_decay, p)

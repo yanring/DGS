@@ -3,11 +3,12 @@ import os
 import queue
 import socket
 import time
-import torch
-import torch.distributed as dist
 from enum import Enum
 from multiprocessing.managers import BaseManager
 from threading import Thread
+
+import torch
+import torch.distributed as dist
 
 from distbelief.utils.serialization import ravel_model_params
 
@@ -106,7 +107,22 @@ a7 = queue.Queue()
 b7 = queue.Queue()
 a8 = queue.Queue()
 b8 = queue.Queue()
-
+a9 = queue.Queue()
+b9 = queue.Queue()
+a10 = queue.Queue()
+b10 = queue.Queue()
+a11 = queue.Queue()
+b11 = queue.Queue()
+a12 = queue.Queue()
+b12 = queue.Queue()
+a13 = queue.Queue()
+b13 = queue.Queue()
+a14 = queue.Queue()
+b14 = queue.Queue()
+a15 = queue.Queue()
+b15 = queue.Queue()
+a16 = queue.Queue()
+b16 = queue.Queue()
 
 def rta1():
     return a1
@@ -170,6 +186,70 @@ def rta8():
 
 def rtb8():
     return b8
+
+
+def rta9():
+    return a9
+
+
+def rtb9():
+    return b9
+
+
+def rta10():
+    return a10
+
+
+def rtb10():
+    return b10
+
+
+def rta11():
+    return a11
+
+
+def rtb11():
+    return b11
+
+
+def rta12():
+    return a12
+
+
+def rtb12():
+    return b12
+
+
+def rta13():
+    return a13
+
+
+def rtb13():
+    return b13
+
+
+def rta14():
+    return a14
+
+
+def rtb14():
+    return b14
+
+
+def rta15():
+    return a15
+
+
+def rtb15():
+    return b15
+
+
+def rta16():
+    return a16
+
+
+def rtb16():
+    return b16
 
 
 class GradientMessageListener(Thread):
@@ -255,6 +335,23 @@ class GradientMessageListener(Thread):
         QueueManager.register('from%dto0' % 7, callable=rtb7)
         QueueManager.register('from0to%d' % 8, callable=rta8)
         QueueManager.register('from%dto0' % 8, callable=rtb8)
+        #
+        QueueManager.register('from0to%d' % 9, callable=rta9)
+        QueueManager.register('from%dto0' % 9, callable=rtb9)
+        QueueManager.register('from0to%d' % 10, callable=rta10)
+        QueueManager.register('from%dto0' % 10, callable=rtb10)
+        QueueManager.register('from0to%d' % 11, callable=rta11)
+        QueueManager.register('from%dto0' % 11, callable=rtb11)
+        QueueManager.register('from0to%d' % 12, callable=rta12)
+        QueueManager.register('from%dto0' % 12, callable=rtb12)
+        QueueManager.register('from0to%d' % 13, callable=rta13)
+        QueueManager.register('from%dto0' % 13, callable=rtb13)
+        QueueManager.register('from0to%d' % 14, callable=rta14)
+        QueueManager.register('from%dto0' % 14, callable=rtb14)
+        QueueManager.register('from0to%d' % 15, callable=rta15)
+        QueueManager.register('from%dto0' % 15, callable=rtb15)
+        QueueManager.register('from0to%d' % 16, callable=rta16)
+        QueueManager.register('from%dto0' % 16, callable=rtb16)
         self.manager = QueueManager(address=('', 5000), authkey=b'abc')
         QueueManager.send_queue_list.append(0)
         QueueManager.recv_queue_list.append(0)
@@ -280,7 +377,7 @@ class GradientMessageListener(Thread):
         else:
             time.sleep(10)
             print('queue init in th')
-            self.manager = QueueManager(address=('89.72.3.16', 5000), authkey=b'abc')
+            self.manager = QueueManager(address=('89.72.3.13', 5000), authkey=b'abc')
         try:
             self.manager.connect()
         except Exception as e:
@@ -409,7 +506,7 @@ def send_message(message_code, payload, dst=0, gradient_version=None, lr=0.1):
         payload = payload.cpu()
     size = str(payload.numel())
     payload = torch.cat((m_parameter.double(), payload.double()))
-    if dist.get_rank() == 0 and (gradient_version % 100 == 1 or dist.get_world_size() > 5):
+    if dist.get_rank() == 0 and (gradient_version % 100 == 1 or dist.get_world_size() > 5) or 1:
         print('%s SENDING MESSAGE %s gradient_version %d, %dto%d.size:%d' % (
             str(time.time()), message_code, gradient_version, dist.get_rank(), dst, payload.numel()))
     # with open('%dto%d.size' % (dist.get_rank(), dst), 'a') as f:

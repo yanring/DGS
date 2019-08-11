@@ -64,7 +64,6 @@ def init_net(args):
 
 
 def cifar10(args, optimizer, net):
-
     logs = []
     transform_train = transforms.Compose([
         transforms.RandomCrop(32, padding=4),
@@ -130,7 +129,7 @@ def cifar10(args, optimizer, net):
                 'training_loss': loss.item(),
                 'training_accuracy': accuracy,
             }
-            if i % 20 == 0 and False:
+            if i % 80 == 0:
                 print("Timestamp: {timestamp} | "
                       "Iteration: {iteration:6} | "
                       "Loss: {training_loss:6.4f} | "
@@ -151,7 +150,14 @@ def cifar10(args, optimizer, net):
         # val_loss, val_accuracy = evaluate(net, testloader, args, verbose=True)
 
         df = pd.DataFrame(logs)
-        # if args.rank == 1:
+        with open(WORKPATH + '/running.log', 'a+') as f:
+            running_log = '{},node{}_{}_{}_m{}_e{}_{}.csv'.format(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+                                                                  args.rank - 1, args.mode,
+                                                                  args.model, args.momentum,
+                                                                  epoch,
+                                                                  logs[-1]['test_accuracy'])
+            f.write(running_log + '\n')
+            # if args.rank == 1:
         #     if args.no_distributed:
         #         if args.cuda:
         #             df.to_csv(

@@ -6,6 +6,7 @@ WORKPATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 print(WORKPATH)
 sys.path.append(WORKPATH)
 from distbelief.optim import GradientSGD
+from distbelief.utils.log import Log
 
 from distbelief.utils.serialization import ravel_model_params
 
@@ -68,6 +69,9 @@ if __name__ == "__main__":
     if args.cuda:
         if socket.gethostname() == 'yan-pc':
             os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 1)
+        elif 'gn' in socket.gethostname():
+            print('init in th')
+            os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 4)
         else:
             os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 2)
             # os.environ['CUDA_VISIBLE_DEVICES'] = '1'
@@ -85,15 +89,21 @@ if __name__ == "__main__":
         # args.warmup = True
         net = init_net(args)
         constant.MODEL_SIZE = ravel_model_params(net).numel()
-
-        optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net, momentum=args.momentum,
-                                weight_decay=args.weight_decay * (args.world_size - 1) / 4,
-                                # weight_decay=5e-6,
-                                args=args)
         if args.rank == 0 and not args.no_distributed:
+            # if args.world_size > 5:
+            #     args.cuda = False
             init_server(args, net)
         else:
-            cifar10(args, optimizer, net)
+            optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net, momentum=args.momentum,
+                                    weight_decay=args.weight_decay,
+                                    # weight_decay=5e-6,
+                                    args=args)
+            try:
+                cifar10(args, optimizer, net)
+            except:
+                err_logger = Log('error', cmdlevel='ERROR', filename='err.log', backup_count=1, when='D')
+                err_logger.trace()
+
     print('MODEL:%s, momentum:%f' % (args.model, args.momentum))
     print(args)
     assert net is not None
