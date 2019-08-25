@@ -123,133 +123,230 @@ a15 = queue.Queue()
 b15 = queue.Queue()
 a16 = queue.Queue()
 b16 = queue.Queue()
-
+a17 = queue.Queue()
+b17 = queue.Queue()
+a18 = queue.Queue()
+b18 = queue.Queue()
+a19 = queue.Queue()
+b19 = queue.Queue()
+a20 = queue.Queue()
+b20 = queue.Queue()
+a21 = queue.Queue()
+b21 = queue.Queue()
+a22 = queue.Queue()
+b22 = queue.Queue()
+a23 = queue.Queue()
+b23 = queue.Queue()
+a24 = queue.Queue()
+b24 = queue.Queue()
+a25 = queue.Queue()
+b25 = queue.Queue()
+a26 = queue.Queue()
+b26 = queue.Queue()
+a27 = queue.Queue()
+b27 = queue.Queue()
+a28 = queue.Queue()
+b28 = queue.Queue()
+a29 = queue.Queue()
+b29 = queue.Queue()
+a30 = queue.Queue()
+b30 = queue.Queue()
+a31 = queue.Queue()
+b31 = queue.Queue()
+a32 = queue.Queue()
+b32 = queue.Queue()
 def rta1():
     return a1
-
-
 def rtb1():
     return b1
-
-
 def rta2():
     return a2
-
-
 def rtb2():
     return b2
-
-
 def rta3():
     return a3
-
-
 def rtb3():
     return b3
-
-
 def rta4():
     return a4
-
-
 def rtb4():
     return b4
-
-
 def rta5():
     return a5
-
-
 def rtb5():
     return b5
-
-
 def rta6():
     return a6
-
-
 def rtb6():
     return b6
-
-
 def rta7():
     return a7
-
-
 def rtb7():
     return b7
-
-
 def rta8():
     return a8
-
-
 def rtb8():
     return b8
-
-
 def rta9():
     return a9
-
-
 def rtb9():
     return b9
-
-
 def rta10():
     return a10
-
-
 def rtb10():
     return b10
-
-
 def rta11():
     return a11
-
-
 def rtb11():
     return b11
-
-
 def rta12():
     return a12
-
-
 def rtb12():
     return b12
-
-
 def rta13():
     return a13
-
-
 def rtb13():
     return b13
-
-
 def rta14():
     return a14
-
-
 def rtb14():
     return b14
-
-
 def rta15():
     return a15
-
-
 def rtb15():
     return b15
-
-
 def rta16():
     return a16
-
-
 def rtb16():
     return b16
+
+
+def rta17():
+    return a17
+
+
+def rtb17():
+    return b17
+
+
+def rta18():
+    return a18
+
+
+def rtb18():
+    return b18
+
+
+def rta19():
+    return a19
+
+
+def rtb19():
+    return b19
+
+
+def rta20():
+    return a20
+
+
+def rtb20():
+    return b20
+
+
+def rta21():
+    return a21
+
+
+def rtb21():
+    return b21
+
+
+def rta22():
+    return a22
+
+
+def rtb22():
+    return b22
+
+
+def rta23():
+    return a23
+
+
+def rtb23():
+    return b23
+
+
+def rta24():
+    return a24
+
+
+def rtb24():
+    return b24
+
+
+def rta25():
+    return a25
+
+
+def rtb25():
+    return b25
+
+
+def rta26():
+    return a26
+
+
+def rtb26():
+    return b26
+
+
+def rta27():
+    return a27
+
+
+def rtb27():
+    return b27
+
+
+def rta28():
+    return a28
+
+
+def rtb28():
+    return b28
+
+
+def rta29():
+    return a29
+
+
+def rtb29():
+    return b29
+
+
+def rta30():
+    return a30
+
+
+def rtb30():
+    return b30
+
+
+def rta31():
+    return a31
+
+
+def rtb31():
+    return b31
+
+
+def rta32():
+    return a32
+
+
+def rtb32():
+    return b32
 
 
 class GradientMessageListener(Thread):
@@ -319,39 +416,71 @@ class GradientMessageListener(Thread):
 
     def init_server_queue_manager(self):
 
-        QueueManager.register('from0to%d' % 1, callable=rta1)
-        QueueManager.register('from%dto0' % 1, callable=rtb1)
-        QueueManager.register('from0to%d' % 2, callable=rta2)
-        QueueManager.register('from%dto0' % 2, callable=rtb2)
-        QueueManager.register('from0to%d' % 3, callable=rta3)
-        QueueManager.register('from%dto0' % 3, callable=rtb3)
-        QueueManager.register('from0to%d' % 4, callable=rta4)
-        QueueManager.register('from%dto0' % 4, callable=rtb4)
-        QueueManager.register('from0to%d' % 5, callable=rta5)
-        QueueManager.register('from%dto0' % 5, callable=rtb5)
-        QueueManager.register('from0to%d' % 6, callable=rta6)
-        QueueManager.register('from%dto0' % 6, callable=rtb6)
-        QueueManager.register('from0to%d' % 7, callable=rta7)
-        QueueManager.register('from%dto0' % 7, callable=rtb7)
-        QueueManager.register('from0to%d' % 8, callable=rta8)
-        QueueManager.register('from%dto0' % 8, callable=rtb8)
-        #
-        QueueManager.register('from0to%d' % 9, callable=rta9)
-        QueueManager.register('from%dto0' % 9, callable=rtb9)
-        QueueManager.register('from0to%d' % 10, callable=rta10)
-        QueueManager.register('from%dto0' % 10, callable=rtb10)
-        QueueManager.register('from0to%d' % 11, callable=rta11)
-        QueueManager.register('from%dto0' % 11, callable=rtb11)
-        QueueManager.register('from0to%d' % 12, callable=rta12)
-        QueueManager.register('from%dto0' % 12, callable=rtb12)
-        QueueManager.register('from0to%d' % 13, callable=rta13)
-        QueueManager.register('from%dto0' % 13, callable=rtb13)
-        QueueManager.register('from0to%d' % 14, callable=rta14)
-        QueueManager.register('from%dto0' % 14, callable=rtb14)
-        QueueManager.register('from0to%d' % 15, callable=rta15)
-        QueueManager.register('from%dto0' % 15, callable=rtb15)
-        QueueManager.register('from0to%d' % 16, callable=rta16)
-        QueueManager.register('from%dto0' % 16, callable=rtb16)
+        QueueManager.register('from0to1', callable=rta1)
+        QueueManager.register('from1to0', callable=rtb1)
+        QueueManager.register('from0to2', callable=rta2)
+        QueueManager.register('from2to0', callable=rtb2)
+        QueueManager.register('from0to3', callable=rta3)
+        QueueManager.register('from3to0', callable=rtb3)
+        QueueManager.register('from0to4', callable=rta4)
+        QueueManager.register('from4to0', callable=rtb4)
+        QueueManager.register('from0to5', callable=rta5)
+        QueueManager.register('from5to0', callable=rtb5)
+        QueueManager.register('from0to6', callable=rta6)
+        QueueManager.register('from6to0', callable=rtb6)
+        QueueManager.register('from0to7', callable=rta7)
+        QueueManager.register('from7to0', callable=rtb7)
+        QueueManager.register('from0to8', callable=rta8)
+        QueueManager.register('from8to0', callable=rtb8)
+        QueueManager.register('from0to9', callable=rta9)
+        QueueManager.register('from9to0', callable=rtb9)
+        QueueManager.register('from0to10', callable=rta10)
+        QueueManager.register('from10to0', callable=rtb10)
+        QueueManager.register('from0to11', callable=rta11)
+        QueueManager.register('from11to0', callable=rtb11)
+        QueueManager.register('from0to12', callable=rta12)
+        QueueManager.register('from12to0', callable=rtb12)
+        QueueManager.register('from0to13', callable=rta13)
+        QueueManager.register('from13to0', callable=rtb13)
+        QueueManager.register('from0to14', callable=rta14)
+        QueueManager.register('from14to0', callable=rtb14)
+        QueueManager.register('from0to15', callable=rta15)
+        QueueManager.register('from15to0', callable=rtb15)
+        QueueManager.register('from0to16', callable=rta16)
+        QueueManager.register('from16to0', callable=rtb16)
+        QueueManager.register('from0to17', callable=rta17)
+        QueueManager.register('from17to0', callable=rtb17)
+        QueueManager.register('from0to18', callable=rta18)
+        QueueManager.register('from18to0', callable=rtb18)
+        QueueManager.register('from0to19', callable=rta19)
+        QueueManager.register('from19to0', callable=rtb19)
+        QueueManager.register('from0to20', callable=rta20)
+        QueueManager.register('from20to0', callable=rtb20)
+        QueueManager.register('from0to21', callable=rta21)
+        QueueManager.register('from21to0', callable=rtb21)
+        QueueManager.register('from0to22', callable=rta22)
+        QueueManager.register('from22to0', callable=rtb22)
+        QueueManager.register('from0to23', callable=rta23)
+        QueueManager.register('from23to0', callable=rtb23)
+        QueueManager.register('from0to24', callable=rta24)
+        QueueManager.register('from24to0', callable=rtb24)
+        QueueManager.register('from0to25', callable=rta25)
+        QueueManager.register('from25to0', callable=rtb25)
+        QueueManager.register('from0to26', callable=rta26)
+        QueueManager.register('from26to0', callable=rtb26)
+        QueueManager.register('from0to27', callable=rta27)
+        QueueManager.register('from27to0', callable=rtb27)
+        QueueManager.register('from0to28', callable=rta28)
+        QueueManager.register('from28to0', callable=rtb28)
+        QueueManager.register('from0to29', callable=rta29)
+        QueueManager.register('from29to0', callable=rtb29)
+        QueueManager.register('from0to30', callable=rta30)
+        QueueManager.register('from30to0', callable=rtb30)
+        QueueManager.register('from0to31', callable=rta31)
+        QueueManager.register('from31to0', callable=rtb31)
+        QueueManager.register('from0to32', callable=rta32)
+        QueueManager.register('from32to0', callable=rtb32)
+
         self.manager = QueueManager(address=('', 5000), authkey=b'abc')
         QueueManager.send_queue_list.append(0)
         QueueManager.recv_queue_list.append(0)

@@ -12,15 +12,11 @@ stdout = []
 
 
 def Print(host, host_out):
-    while 1:
+    for line in host_out.stdout:
         try:
-            for line in host_out.stdout:
-                try:
-                    stdout.append(line)
-                except Exception as e:
-                    print(e)
+            stdout.append(line)
         except Exception as e:
-            print('err:', host, e)
+            print(e)
 
 
 if __name__ == '__main__':
@@ -37,7 +33,7 @@ if __name__ == '__main__':
                                    proxy_host='172.18.233.36', proxy_user='yan',
                                    proxy_port=10000)
         host_args = ['--rank %d' % i for i in range(len(hosts))]
-        command = '/home/yan/anaconda3/bin/python /share/distbelief/example/main.py --dataset cifar10 --mode dgc --lr 0.1 --world-size ' + str(
+        command = '/home/yan/anaconda3/bin/python /share/distbelief/example/main.py --dataset cifar10 --mode gradient_sgd --lr 0.1 --world-size ' + str(
             len(hosts)) + ' --cuda %s'
         # command = '/home/yan/anaconda3/bin/python /share/distbelief/example/main.py --mode gradient_sgd --world-size ' + str(len(hosts)) + ' --cuda %s'
         # command = '/home/yan/anaconda3/envs/an4/bin/python /share/distbelief/example/main.py  --dataset an4 --mode gradient_sgd --world-size ' + str(len(hosts)) + ' --cuda %s'
@@ -46,7 +42,7 @@ if __name__ == '__main__':
     else:
         # hosts = ['gn22', 'gn17', 'gn17', 'gn18', 'gn18']
         hosts = ['gn13']
-        for i in range(14, 18):
+        for i in range(14, 22):
             hosts.append('gn%s' % str(i))
             hosts.append('gn%s' % str(i))
             hosts.append('gn%s' % str(i))
@@ -55,14 +51,14 @@ if __name__ == '__main__':
         print('hosts:', hosts)
         client = ParallelSSHClient(hosts, )
         host_args = ['--rank %d' % i for i in range(len(hosts))]
-        command = '~/anaconda3/bin/python /WORK/sysu_wgwu_2/GradientServer/distbelief/example/main.py --dataset cifar10 --batch-size 32 --mode gradient_sgd --lr 0.1 --world-size ' + str(
+        command = '~/anaconda3/bin/python /WORK/sysu_wgwu_2/GradientServer/distbelief/example/main.py --dataset cifar10 --batch-size 16 --mode gradient_sgd --lr 0.1 --world-size ' + str(
             len(hosts)) + ' --cuda %s'
 
     output = client.run_command(command, host_args=host_args, use_pty=True, timeout=1000)
     threads = []
     index = 0
     for host, host_out in output.items():
-        if index >= 0 and index % 4 == 0:
+        if index == 0 and index % 4 == 0:
             t = threading.Thread(target=Print, args=(host, host_out))
             t.start()
             threads.append(t)

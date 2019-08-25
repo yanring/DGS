@@ -2,6 +2,8 @@ import os
 import socket
 import sys
 
+import torchvision
+
 WORKPATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 print(WORKPATH)
 sys.path.append(WORKPATH)
@@ -30,7 +32,7 @@ def init_server(args, net):
     size_list = [i.data.numel() for i in net.parameters()]
     threads_num = dist.get_world_size() - 1
     threads = []
-    global_model = ravel_model_params(model, cuda=True)
+    global_model = ravel_model_params(model)
     constant.MODEL_SIZE = global_model.numel()
     synced_model = global_model.clone()
     for i in range(1, threads_num + 1):
@@ -44,11 +46,12 @@ def init_server(args, net):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Distbelief training example')
-    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
-                        help='input batch size for training (default: 64)')
+
     parser.add_argument('--test-batch-size', type=int, default=20000, metavar='N',
                         help='input batch size for testing (default: 10000)')
     parser.add_argument('--epochs', type=int, default=50, metavar='N', help='number of epochs to train (default: 20)')
+    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
+                        help='input batch size for training (default: 64)')
     parser.add_argument('--lr', type=float, default=0.1, metavar='LR', help='learning rate (default: 0.1)')
     parser.add_argument('--momentum', type=float, default=0.0, metavar='momentum', help='momentum (default: 0.0)')
     parser.add_argument('--cuda', action='store_true', default=True, help='use CUDA for training')
@@ -88,10 +91,15 @@ if __name__ == "__main__":
         args.weight_decay = 5e-4
         # args.warmup = True
         net = init_net(args)
+        print('MODEL:%s, momentum:%f' % (args.model, args.momentum))
+        print(args)
+        assert net is not None
         constant.MODEL_SIZE = ravel_model_params(net).numel()
         if args.rank == 0 and not args.no_distributed:
-            # if args.world_size > 5:
-            #     args.cuda = False
+            if args.world_size > 40:
+                args.cuda = False
+                net = net.cpu()
+                print('server init in cpu')
             init_server(args, net)
         else:
             optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net, momentum=args.momentum,
@@ -100,10 +108,39 @@ if __name__ == "__main__":
                                     args=args)
             try:
                 cifar10(args, optimizer, net)
-            except:
+            except Exception:
                 err_logger = Log('error', cmdlevel='ERROR', filename='err.log', backup_count=1, when='D')
                 err_logger.trace()
+    elif args.dataset == 'tinyimagenet':
 
-    print('MODEL:%s, momentum:%f' % (args.model, args.momentum))
-    print(args)
-    assert net is not None
+        args.model = 'resnet18'
+        args.momentum = 0.9
+        args.half = False
+        args.weight_decay = 1e-4
+        args.batch_size = 256
+        args.epochs = 90
+        # args.warmup = True
+        net = torchvision.models.resnet18(num_classes=200).cuda()
+        print('MODEL:%s, momentum:%f' % (args.model, args.momentum))
+        print(args)
+        assert net is not None
+        constant.MODEL_SIZE = ravel_model_params(net).numel()
+        if args.rank == 0 and not args.no_distributed:
+            if args.world_size > 17:
+                args.cuda = False
+            init_server(args, net)
+        else:
+            optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net, momentum=args.momentum,
+                                    weight_decay=args.weight_decay,
+                                    # weight_decay=5e-6,
+                                    args=args)
+            try:
+                from example.Imagenet_Origin import main
+
+                main(parser, optimizer)
+            except Exception as e:
+                err_logger = Log('error', cmdlevel='ERROR', filename='err.log', backup_count=1, when='D')
+                err_logger.trace()
+                with open(WORKPATH + '/err.log', 'a+') as f:
+                    running_log = str(e)
+                    f.write(running_log + '\n')

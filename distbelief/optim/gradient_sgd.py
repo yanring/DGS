@@ -86,6 +86,7 @@ class GradientSGD(Optimizer):
         self.version = 0
         self.queue = Queue(maxsize=1)
         if not args.no_distributed and args.rank > 0:
+            time.sleep(0.1 * int(args.rank))
             dist.init_process_group('tcp', init_method='file://%s/sharedfile' % WORKPATH, group_name='mygroup',
                                     world_size=args.world_size, rank=args.rank)
             print('I am node rank:%d' % dist.get_rank())
@@ -140,13 +141,14 @@ class GradientSGD(Optimizer):
         elif self.args.mode == 'gradient_sgd':
             if self.version < 5:
                 print('Running gradient_sgd')
-            if self.version < 900:
+            if self.version < 100:
                 weight_decay = 0
             else:
                 weight_decay = self.weight_decay
             raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, self.u_kt, self.v_kt,
                                                          # rate=0.04 * (lr / self.args.lr) / (self.args.world_size - 1),
                                                          rate=0.01,
+                                                         #  rate=0.01,
                                                          lr=lr, momentum=self.momentum, weight_decay=weight_decay)
             # print(1,raveled_gradients.sum())
             sparse_gradient = ravel_sparse_gradient(raveled_gradients)
