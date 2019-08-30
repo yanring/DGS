@@ -41,8 +41,8 @@ if __name__ == '__main__':
         #     len(hosts)) + ' --cuda %s'
     else:
         # hosts = ['gn22', 'gn17', 'gn17', 'gn18', 'gn18']
-        hosts = ['gn13']
-        for i in range(14, 22):
+        hosts = ['gn02']
+        for i in ['03', '04']:
             hosts.append('gn%s' % str(i))
             hosts.append('gn%s' % str(i))
             hosts.append('gn%s' % str(i))
@@ -51,7 +51,7 @@ if __name__ == '__main__':
         print('hosts:', hosts)
         client = ParallelSSHClient(hosts, )
         host_args = ['--rank %d' % i for i in range(len(hosts))]
-        command = '~/anaconda3/bin/python /WORK/sysu_wgwu_2/GradientServer/distbelief/example/main.py --dataset cifar10 --batch-size 16 --mode gradient_sgd --lr 0.1 --world-size ' + str(
+        command = '~/anaconda3/bin/python /WORK/sysu_wgwu_2/GradientServer/distbelief/example/main.py --dataset cifar10 --batch-size 32 --mode asgd --lr 0.1 --world-size ' + str(
             len(hosts)) + ' --cuda %s'
 
     output = client.run_command(command, host_args=host_args, use_pty=True, timeout=1000)
