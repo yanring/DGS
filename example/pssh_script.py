@@ -29,7 +29,7 @@ if __name__ == '__main__':
         # hosts = ['192.168.3.100', '192.168.3.101', '192.168.3.101', '192.168.3.102', '192.168.3.102', '192.168.3.103',
         #          '192.168.3.103', '192.168.3.104', '192.168.3.104']
         client = ParallelSSHClient(hosts, user='yan',
-                                   proxy_host='172.18.233.36', proxy_user='yan',
+                                   proxy_host='172.18.233.41', proxy_user='yan',
                                    proxy_port=10000)
         host_args = ['--rank %d' % i for i in range(len(hosts))]
         # command = '/home/yan/anaconda3/bin/python /share/distbelief/example/main.py --dataset cifar10 --mode gradient_sgd --lr 0.1 --world-size ' + str(
