@@ -166,7 +166,7 @@ class GradientSGD(Optimizer):
                 print('Running aji ', self.version)
             raveled_gradients = Aji(self.model, self.filter_gradient, self.u_kt, self.v_kt,
                                     rate=0.01,
-                                    lr=lr, momentum=self.momentum)
+                                    lr=lr)
             sparse_gradient = ravel_sparse_gradient(raveled_gradients)
         elif self.args.mode == 'sgd':
             if self.version < 5:

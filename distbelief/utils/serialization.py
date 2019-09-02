@@ -134,7 +134,7 @@ def DGC(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, momentum=None, weight_decay
             # print(layer_v_kt)
         threshold = float(topn[0][-1])
         mask = (abs(layer_v_kt) > threshold).float()
-        payload[current_index:current_index + numel].copy_(layer_v_kt.mul(mask).mul_(lr))
+        payload[current_index:current_index + numel].copy_(layer_v_kt.mul(mask).mul(lr))
         layer_v_kt.mul_(1 - mask)
         layer_u_kt.mul_(1 - mask)
         current_index += numel

@@ -506,7 +506,7 @@ class GradientMessageListener(Thread):
         else:
             time.sleep(10)
             print('queue init in th')
-            self.manager = QueueManager(address=('89.72.3.2', 5000), authkey=b'abc')
+            self.manager = QueueManager(address=('89.72.3.11', 5000), authkey=b'abc')
         try:
             self.manager.connect()
         except Exception as e:
@@ -635,7 +635,7 @@ def send_message(message_code, payload, dst=0, gradient_version=None, lr=0.1):
         payload = payload.cpu()
     size = str(payload.numel())
     payload = torch.cat((m_parameter.double(), payload.double()))
-    if dist.get_rank() == 0 and (gradient_version % 100 == 1 or dist.get_world_size() > 5) or 1:
+    if dist.get_rank() == 0 and (dist.get_world_size() > 5) or 1:
         print('%s SENDING MESSAGE %s gradient_version %d, %dto%d.size:%d' % (
             str(time.time()), message_code, gradient_version, dist.get_rank(), dst, payload.numel()))
     # with open('%dto%d.size' % (dist.get_rank(), dst), 'a') as f:
