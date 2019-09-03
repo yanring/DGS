@@ -506,7 +506,7 @@ class GradientMessageListener(Thread):
         else:
             time.sleep(10)
             print('queue init in th')
-            self.manager = QueueManager(address=('89.72.3.11', 5000), authkey=b'abc')
+            self.manager = QueueManager(address=('89.72.3.02', 5000), authkey=b'abc')
         try:
             self.manager.connect()
         except Exception as e:
