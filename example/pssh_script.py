@@ -52,7 +52,7 @@ if __name__ == '__main__':
         print('hosts:', hosts)
         client = ParallelSSHClient(hosts, timeout=1000)
         host_args = ['--rank %d' % i for i in range(len(hosts))]
-        command = '~/anaconda3/bin/python /WORK/sysu_wgwu_2/GradientServer/distbelief/example/main.py --dataset cifar10 --batch-size 16 --mode aji --lr 0.1 --world-size ' + str(
+        command = '~/anaconda3/bin/python /WORK/sysu_wgwu_2/GradientServer/distbelief/example/main.py --dataset cifar10 --batch-size 16 --mode gradient_sgd --lr 0.1 --world-size ' + str(
             len(hosts)) + ' --cuda %s'
 
     output = client.run_command(command, host_args=host_args, use_pty=True, timeout=1000)

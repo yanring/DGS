@@ -86,9 +86,9 @@ if __name__ == "__main__":
         from example.cifar10 import cifar10, init_net
 
         args.model = 'ResNet18'
-        args.momentum = 0.7
+        args.momentum = 0.3
         args.half = False
-        args.weight_decay = 5e-4
+        args.weight_decay = 3e-4
         args.warmup = False
         net = init_net(args)
         print('MODEL:%s, momentum:%f' % (args.model, args.momentum))
