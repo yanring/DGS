@@ -34,7 +34,7 @@ if __name__ == '__main__':
                                    proxy_host='172.18.233.41', proxy_user='yan',
                                    proxy_port=10000, timeout=1000)
         host_args = ['--rank %d' % i for i in range(len(hosts))]
-        command = '/home/yan/anaconda3/bin/python /share/distbelief/example/main.py --dataset cifar10 --batch-size 64 --mode asgd --lr 0.1 --world-size ' + str(
+        command = '/home/yan/anaconda3/bin/python /share/distbelief/example/main.py --dataset cifar10 --batch-size 64 --mode gradient_sgd --lr 0.1 --world-size ' + str(
             len(hosts)) + ' --cuda %s'
         # command = '/home/yan/anaconda3/bin/python /share/distbelief/example/main.py --mode gradient_sgd --world-size ' + str(len(hosts)) + ' --cuda %s'
         # command = '/home/yan/anaconda3/envs/an4/bin/python /share/distbelief/example/main.py  --dataset an4 --mode gradient_sgd --world-size ' + str(len(hosts)) + ' --cuda %s'

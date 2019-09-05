@@ -10,7 +10,8 @@ import torch.optim
 
 from distbelief.utils.messaging import MessageCode, MessageListener, send_message, GSMessageCode, \
     GradientMessageListener
-from distbelief.utils.serialization import ravel_model_params, ravel_sparse_gradient, unravel_sparse_gradient
+from distbelief.utils.serialization import ravel_model_params, ravel_sparse_gradient, unravel_sparse_gradient, \
+    server_gradient_filter
 
 _LOGGER = logging.getLogger(__name__)
 cond = threading.Condition()
@@ -239,7 +240,7 @@ class GradientServer(GradientMessageListener):
                 un_synced_worker.remove(sender)
             else:
                 self.send_grad = self.agg_gradient.add(-1, self.acc_send_grad)
-                # server_gradient_filter(self.size_list, self.send_grad, rate=0.1 * global_lr)
+                server_gradient_filter(self.size_list, self.send_grad, rate=0.1 * global_lr)
                 # end = time.time()
 
                 # print(abs(self.send_grad).sum())

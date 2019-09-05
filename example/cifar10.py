@@ -185,12 +185,12 @@ def cifar10(args, optimizer, net):
         else:
             df.to_csv(WORKPATH + '/log/single.csv', index_label='index')
     else:
-        df.to_csv(WORKPATH + '/log/node{}_{}_{}_m{}_e{}_b{}_{}worker_{}.csv'.format(args.rank - 1, args.mode,
-                                                                                    args.model, args.momentum,
-                                                                                    args.epochs,
-                                                                                    args.batch_size,
-                                                                                    args.world_size - 1,
-                                                                                    logs[-1]['test_accuracy']),
+        df.to_csv(WORKPATH + '/log/node{}_{}_{}_m{}_e{}_b{}_{}worker_dual_{}.csv'.format(args.rank - 1, args.mode,
+                                                                                         args.model, args.momentum,
+                                                                                         args.epochs,
+                                                                                         args.batch_size,
+                                                                                         args.world_size - 1,
+                                                                                         logs[-1]['test_accuracy']),
                   index_label='index')
     print('Finished Training')
 
