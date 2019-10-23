@@ -1,5 +1,6 @@
 import argparse
 import os
+from datetime import datetime
 
 import torch
 import torch.nn as nn
@@ -65,8 +66,8 @@ def train(train_loader, model, criterion, optimizer, epoch):
         loss.backward()
         optimizer.step()
 
-        if i % 10 == 0:
-            print('Epoch: [{0}][{1}/{2}]\t'
+        if i % 100 == 0:
+            print(str(datetime.now()) + ' Epoch: [{0}][{1}/{2}]\t'
                   'Loss {loss:.4f} ({loss_avg:.4f})\t'
                   'Acc@1 {top1:.3f} ({top1_avg:.3f})\t'
                   'Acc@5 {top5:.3f} ({top5_avg:.3f})'.format(
@@ -139,7 +140,7 @@ def main():
         batch_size=64, shuffle=False,
         num_workers=4, pin_memory=True)
 
-    model = models.alexnet(num_classes=200)
+    model = models.resnet18(num_classes=200)
     criterion = nn.CrossEntropyLoss().cuda(args.gpu)
     optimizer = torch.optim.SGD(model.parameters(), 0.01,
                                 momentum=0.9,
