@@ -121,7 +121,7 @@ def cifar10(args, optimizer, net):
             loss.backward()
             optimizer.step()
             _, predicted = torch.max(outputs, 1)
-            accuracy = accuracy_score(predicted, labels)
+            accuracy = accuracy_score(predicted.cpu(), labels.cpu())
 
             log_obj = {
                 'timestamp': datetime.now(),

@@ -568,4 +568,4 @@ def send_message(message_code, payload, dst=0, gradient_version=None, lr=0.1):
     # with open('%dto%d.size' % (dist.get_rank(), dst), 'a') as f:
     #     f.write(size)
     QueueManager.put_size(dst, size)
-    dist.isend(tensor=payload, dst=dst)
+    dist.send(tensor=payload, dst=dst)

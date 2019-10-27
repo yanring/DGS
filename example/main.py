@@ -22,7 +22,7 @@ from distbelief.server import GradientServer
 
 def init_server(args, net):
     print('init server!!!')
-    dist.init_process_group('tcp', init_method='file://%s/sharedfile' % WORKPATH, group_name='mygroup',
+    dist.init_process_group('gloo', init_method='file://%s/sharedfile' % WORKPATH, group_name='mygroup',
                             world_size=args.world_size, rank=args.rank)
 
     if args.cuda:

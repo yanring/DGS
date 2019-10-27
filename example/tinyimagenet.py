@@ -66,7 +66,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
         loss.backward()
         optimizer.step()
 
-        if i % 100 == 0:
+        if i % 1 == 0:
             print(str(datetime.now()) + ' Epoch: [{0}][{1}/{2}]\t'
                   'Loss {loss:.4f} ({loss_avg:.4f})\t'
                   'Acc@1 {top1:.3f} ({top1_avg:.3f})\t'
@@ -111,7 +111,8 @@ def validate(test_loader, model, criterion):
 def main():
     args = parser.parse_args()
     args.gpu = 0
-    args.data = '/share/distbelief/data/tiny-imagenet-200/'
+    # args.data = '/share/distbelief/data/tiny-imagenet-200/'
+    args.data = '/home/yan/data/'
     traindir = os.path.join(args.data, 'train')  # /train/ を指定されたパスに追加
     testdir = os.path.join(args.data, 'val')
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
@@ -127,7 +128,7 @@ def main():
         ]))
 
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=64, shuffle=True,
+        train_dataset, batch_size=256, shuffle=True,
         num_workers=4, pin_memory=True)
 
     test_loader = torch.utils.data.DataLoader(
@@ -140,7 +141,8 @@ def main():
         batch_size=64, shuffle=False,
         num_workers=4, pin_memory=True)
 
-    model = models.resnet18(num_classes=200)
+    model = models.resnet18(num_classes=1000)
+    # model = EfficientNet.from_name('efficientnet-b0')
     criterion = nn.CrossEntropyLoss().cuda(args.gpu)
     optimizer = torch.optim.SGD(model.parameters(), 0.01,
                                 momentum=0.9,

@@ -87,7 +87,7 @@ class GradientSGD(Optimizer):
         self.queue = Queue(maxsize=1)
         if not args.no_distributed and args.rank > 0:
             time.sleep(0.1 * int(args.rank))
-            dist.init_process_group('tcp', init_method='file://%s/sharedfile' % WORKPATH, group_name='mygroup',
+            dist.init_process_group('gloo', init_method='file://%s/sharedfile' % WORKPATH, group_name='mygroup',
                                     world_size=args.world_size, rank=args.rank)
             print('I am node rank:%d' % dist.get_rank())
             self.listener = GradientListener(model, self.queue)
