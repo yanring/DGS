@@ -26,16 +26,18 @@ if __name__ == '__main__':
     # where = '522'
     print(args)
     if args.where == '522':
-        # hosts = ['192.168.3.100', '192.168.3.101', '192.168.3.102', '192.168.3.103', '192.168.3.104']
-        hosts = ['192.168.3.100', '192.168.3.100']
+        hosts = ['192.168.3.100', '192.168.3.101', '192.168.3.102', '192.168.3.103', '192.168.3.104']
+        # hosts = ['192.168.3.100', '192.168.3.101']
         # hosts = ['192.168.3.100', '192.168.3.101', '192.168.3.101', '192.168.3.102', '192.168.3.102', '192.168.3.103',
         #          '192.168.3.103', '192.168.3.104', '192.168.3.104']
         client = ParallelSSHClient(hosts, user='yan',
                                    proxy_host='172.18.233.41', proxy_user='yan',
                                    proxy_port=10000, timeout=1000)
         host_args = ['--rank %d' % i for i in range(len(hosts))]
-        command = '/home/yan/anaconda3/bin/python /share/distbelief/example/main.py --dataset cifar10 --batch-size 64 --mode gradient_sgd --lr 0.1 --world-size ' + str(
-            len(hosts)) + ' --cuda %s'
+        # command = '/home/yan/anaconda3/bin/python /share/distbelief/example/main.py --dataset cifar10 --batch-size 64 --mode gradient_sgd --lr 0.1 --world-size ' + str(
+        #     len(hosts)) + ' --cuda %s'
+        command = '/home/yan/anaconda3/envs/torch1.3/bin/python /share/distbelief/example/Imagenet_Origin.py --world-size ' + str(
+            len(hosts)) + ' %s'
         # command = '/home/yan/anaconda3/bin/python /share/distbelief/example/main.py --mode gradient_sgd --world-size ' + str(len(hosts)) + ' --cuda %s'
         # command = '/home/yan/anaconda3/envs/an4/bin/python /share/distbelief/example/main.py  --dataset an4 --mode gradient_sgd --world-size ' + str(len(hosts)) + ' --cuda %s'
         # command = '/home/yan/anaconda3/envs/an4/bin/python /share/distbelief/deepspeech/train.py --cuda --learning-anneal 1.01 --momentum 0.9 --num-workers 4 --augment --batch-size 5 --world-size ' + str(
@@ -59,7 +61,7 @@ if __name__ == '__main__':
     threads = []
     index = 0
     for host, host_out in output.items():
-        if index == 0 and index % 4 == 0:
+        if index == 0 and index % 4 == 0 or 1:
             t = threading.Thread(target=Print, args=(host, host_out))
             t.start()
             threads.append(t)

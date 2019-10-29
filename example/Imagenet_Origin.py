@@ -2,9 +2,14 @@ import argparse
 import os
 import random
 import shutil
+import sys
 import time
 import warnings
+from datetime import datetime
 
+import pandas
+
+os.environ['GLOO_SOCKET_IFNAME'] = 'enp3s0'
 import torch
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
@@ -17,20 +22,30 @@ import torch.utils.data.distributed
 import torchvision.datasets as datasets
 import torchvision.models as models
 import torchvision.transforms as transforms
+from PIL import ImageFile
 
+WORKPATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(WORKPATH)
+from distbelief.utils import constant
+from distbelief.utils.serialization import ravel_model_params
+
+from distbelief.optim import GradientSGD
+from example.main import init_server
+
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith("__")
                      and callable(models.__dict__[name]))
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
-parser.add_argument('-data', default='/home/yan/data/',
+parser.add_argument('-data', default='/home/yan/tmpfs/data/',
                     help='path to dataset')
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                     choices=model_names,
                     help='model architecture: ' +
                          ' | '.join(model_names) +
                          ' (default: resnet18)')
-parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
+parser.add_argument('-j', '--workers', default=16, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--epochs', default=90, type=int, metavar='N',
                     help='number of total epochs to run')
@@ -48,7 +63,7 @@ parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
                     metavar='W', help='weight decay (default: 1e-4)',
                     dest='weight_decay')
-parser.add_argument('-p', '--print-freq', default=10, type=int,
+parser.add_argument('-p', '--print-freq', default=100, type=int,
                     metavar='N', help='print frequency (default: 10)')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
@@ -74,6 +89,14 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
                          'fastest way to use PyTorch for either single node or '
                          'multi node data parallel training')
 
+# my settings
+parser.add_argument('--mode', type=str, default='gradient_sgd', help='gradient_sgd, dgc, Aji or asgd')
+parser.add_argument('--cuda', action='store_true', default=True, help='use CUDA for training')
+parser.add_argument('--no-distributed', action='store_true', default=False,
+                    help='distributed or local')
+
+logs = []
+
 best_acc1 = 0
 
 
@@ -90,6 +113,11 @@ def main():
                       'You may see unexpected behavior when restarting '
                       'from checkpoints.')
 
+    if args.rank == 0:
+        print("=> creating server '{}'".format(args.arch))
+        model = models.__dict__[args.arch]()
+        init_server(args, model)
+
     if args.gpu is not None:
         warnings.warn('You have chosen a specific GPU. This will completely '
                       'disable data parallelism.')
@@ -97,7 +125,8 @@ def main():
     if args.dist_url == "env://" and args.world_size == -1:
         args.world_size = int(os.environ["WORLD_SIZE"])
 
-    args.distributed = args.world_size > 1 or args.multiprocessing_distributed
+    args.distributed = False
+    # args.distributed = args.world_size > 1 or args.multiprocessing_distributed
 
     ngpus_per_node = torch.cuda.device_count()
     if args.multiprocessing_distributed:
@@ -135,6 +164,7 @@ def main_worker(gpu, ngpus_per_node, args):
     else:
         print("=> creating model '{}'".format(args.arch))
         model = models.__dict__[args.arch]()
+        constant.MODEL_SIZE = ravel_model_params(model).numel()
 
     if args.distributed:
         # For multiprocessing distributed, DistributedDataParallel constructor
@@ -163,14 +193,19 @@ def main_worker(gpu, ngpus_per_node, args):
             model.features = torch.nn.DataParallel(model.features)
             model.cuda()
         else:
-            model = torch.nn.DataParallel(model).cuda()
+            # model = torch.nn.DataParallel(model).cuda()
+            model = model.cuda()
 
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().cuda(args.gpu)
 
-    optimizer = torch.optim.SGD(model.parameters(), args.lr,
-                                momentum=args.momentum,
-                                weight_decay=args.weight_decay)
+    # optimizer = torch.optim.SGD(model.parameters(), args.lr,
+    #                             momentum=args.momentum,
+    #                             weight_decay=args.weight_decay)
+    optimizer = GradientSGD(model.parameters(), lr=args.lr,
+                            model=model, momentum=args.momentum,
+                            weight_decay=args.weight_decay,
+                            args=args)
 
     # optionally resume from a checkpoint
     if args.resume:
@@ -184,6 +219,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 checkpoint = torch.load(args.resume, map_location=loc)
             args.start_epoch = checkpoint['epoch']
             best_acc1 = checkpoint['best_acc1']
+            logs = checkpoint['logs']
             if args.gpu is not None:
                 # best_acc1 may be from a checkpoint from a different GPU
                 best_acc1 = best_acc1.to(args.gpu)
@@ -202,6 +238,12 @@ def main_worker(gpu, ngpus_per_node, args):
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 
+    # train_dataset = torchvision.datasets.ImageNet('/home/yan/mnt/', download=True, transform=transforms.Compose([
+    #     transforms.RandomResizedCrop(224),
+    #     transforms.RandomHorizontalFlip(),
+    #     transforms.ToTensor(),
+    #     normalize,
+    # ]))
     train_dataset = datasets.ImageFolder(
         traindir,
         transforms.Compose([
@@ -214,7 +256,9 @@ def main_worker(gpu, ngpus_per_node, args):
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
     else:
-        train_sampler = None
+        # train_sampler = None
+        train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, args.world_size - 1,
+                                                                        args.rank - 1)
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
@@ -257,8 +301,27 @@ def main_worker(gpu, ngpus_per_node, args):
                 'state_dict': model.state_dict(),
                 'best_acc1': best_acc1,
                 'optimizer': optimizer.state_dict(),
+                'logs': logs
             }, is_best)
 
+        # running log
+
+        with open(WORKPATH + '/running.log', 'a+') as f:
+            running_log = '{},node{}_{}_{}_m{}_e{}_{}.csv'.format(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+                                                                  args.rank - 1, args.mode,
+                                                                  args.model, args.momentum,
+                                                                  epoch,
+                                                                  logs[-1]['test_accuracy'])
+            f.write(running_log + '\n')
+
+        df = pandas.DataFrame(logs)
+        df.to_csv(WORKPATH + '/log/node{}_{}_{}_m{}_e{}_b{}_{}worker_dual_{}.csv'.format(args.rank - 1, args.mode,
+                                                                                         args.model, args.momentum,
+                                                                                         args.epochs,
+                                                                                         args.batch_size,
+                                                                                         args.world_size - 1,
+                                                                                         logs[-1]['test_accuracy']),
+                  index_label='index')
 
 def train(train_loader, model, criterion, optimizer, epoch, args):
     batch_time = AverageMeter('Time', ':6.3f')
@@ -281,6 +344,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 
         if args.gpu is not None:
             images = images.cuda(args.gpu, non_blocking=True)
+        images = images.cuda(args.gpu, non_blocking=True)
         target = target.cuda(args.gpu, non_blocking=True)
 
         # compute output
@@ -292,7 +356,14 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         losses.update(loss.item(), images.size(0))
         top1.update(acc1[0], images.size(0))
         top5.update(acc5[0], images.size(0))
-
+        log_obj = {
+            'timestamp': datetime.now(),
+            'iteration': i,
+            'training_loss': loss.item(),
+            'training_accuracy': acc1,
+            'training_accuracy5': acc5,
+        }
+        logs.append(log_obj)
         # compute gradient and do SGD step
         optimizer.zero_grad()
         loss.backward()
@@ -346,6 +417,7 @@ def validate(val_loader, model, criterion, args):
         # TODO: this should also be done with the ProgressMeter
         print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
               .format(top1=top1, top5=top5))
+        logs[-1]['test_loss'], logs[-1]['test_accuracy'], logs[-1]['test_accuracy5'] = (loss.item(), top1.avg, top5.avg)
 
     return top1.avg
 
@@ -358,6 +430,7 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
+
     def __init__(self, name, fmt=':f'):
         self.name = name
         self.fmt = fmt

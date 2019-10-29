@@ -85,7 +85,7 @@ class GradientSGD(Optimizer):
         self.idx = 0
         self.version = 0
         self.queue = Queue(maxsize=1)
-        if not args.no_distributed and args.rank > 0:
+        if args.rank > 0:
             time.sleep(0.1 * int(args.rank))
             dist.init_process_group('gloo', init_method='file://%s/sharedfile' % WORKPATH, group_name='mygroup',
                                     world_size=args.world_size, rank=args.rank)
@@ -109,7 +109,7 @@ class GradientSGD(Optimizer):
         loss = None
         if closure is not None:
             loss = closure()
-        if not self.args.no_distributed and not self.listener.flag:
+        if not self.listener.flag:
             while not self.args.no_distributed and not self.listener.flag:
                 print('wait for server')
                 time.sleep(1)
@@ -143,7 +143,7 @@ class GradientSGD(Optimizer):
                 print('Running gradient_sgd')
 
             raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, self.u_kt, self.v_kt,
-                                                         rate=0.04 * (lr / self.args.lr) / (self.args.world_size - 1),
+                                                         rate=0.01 * (lr / self.args.lr) / (self.args.world_size - 1),
                                                          # rate=0.01,
                                                          #  rate=0.01,
                                                          lr=lr, momentum=self.momentum, weight_decay=self.weight_decay)
