@@ -2,6 +2,7 @@ import argparse
 import os
 import random
 import shutil
+import socket
 import sys
 import time
 import warnings
@@ -102,7 +103,15 @@ best_acc1 = 0
 
 def main():
     args = parser.parse_args()
-
+    if socket.gethostname() == 'yan-pc':
+        os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 1)
+    elif 'gn' in socket.gethostname():
+        print('init in th')
+        os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 4)
+    else:
+        os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 2)
+        # os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+    print('Using device%s, device count:%d' % (os.environ['CUDA_VISIBLE_DEVICES'], torch.cuda.device_count()))
     if args.seed is not None:
         random.seed(args.seed)
         torch.manual_seed(args.seed)
@@ -117,7 +126,7 @@ def main():
         print("=> creating server '{}'".format(args.arch))
         model = models.__dict__[args.arch]()
         init_server(args, model)
-
+    args.gpu = args.rank % torch.cuda.device_count()
     if args.gpu is not None:
         warnings.warn('You have chosen a specific GPU. This will completely '
                       'disable data parallelism.')
@@ -127,7 +136,6 @@ def main():
 
     args.distributed = False
     # args.distributed = args.world_size > 1 or args.multiprocessing_distributed
-
     ngpus_per_node = torch.cuda.device_count()
     if args.multiprocessing_distributed:
         # Since we have ngpus_per_node processes per node, the total world_size
@@ -142,7 +150,7 @@ def main():
 
 
 def main_worker(gpu, ngpus_per_node, args):
-    global best_acc1
+    global best_acc1, logs
     args.gpu = gpu
 
     if args.gpu is not None:
@@ -309,19 +317,20 @@ def main_worker(gpu, ngpus_per_node, args):
         with open(WORKPATH + '/running.log', 'a+') as f:
             running_log = '{},node{}_{}_{}_m{}_e{}_{}.csv'.format(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
                                                                   args.rank - 1, args.mode,
-                                                                  args.model, args.momentum,
+                                                                  args.arch, args.momentum,
                                                                   epoch,
                                                                   logs[-1]['test_accuracy'])
             f.write(running_log + '\n')
 
         df = pandas.DataFrame(logs)
         df.to_csv(WORKPATH + '/log/node{}_{}_{}_m{}_e{}_b{}_{}worker_dual_{}.csv'.format(args.rank - 1, args.mode,
-                                                                                         args.model, args.momentum,
+                                                                                         args.arch, args.momentum,
                                                                                          args.epochs,
                                                                                          args.batch_size,
                                                                                          args.world_size - 1,
                                                                                          logs[-1]['test_accuracy']),
                   index_label='index')
+
 
 def train(train_loader, model, criterion, optimizer, epoch, args):
     batch_time = AverageMeter('Time', ':6.3f')
@@ -344,7 +353,6 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 
         if args.gpu is not None:
             images = images.cuda(args.gpu, non_blocking=True)
-        images = images.cuda(args.gpu, non_blocking=True)
         target = target.cuda(args.gpu, non_blocking=True)
 
         # compute output
