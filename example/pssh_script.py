@@ -26,8 +26,8 @@ if __name__ == '__main__':
     # where = '522'
     print(args)
     if args.where == '522':
-        hosts = ['192.168.3.100', '192.168.3.101', '192.168.3.102', '192.168.3.103', '192.168.3.104']
-        # hosts = ['192.168.3.100', '192.168.3.101']
+        # hosts = ['192.168.3.100', '192.168.3.101', '192.168.3.102', '192.168.3.103', '192.168.3.104']
+        hosts = ['192.168.3.100', '192.168.3.100']
         # hosts = ['192.168.3.100', '192.168.3.101', '192.168.3.101', '192.168.3.102', '192.168.3.102', '192.168.3.103',
         #          '192.168.3.103', '192.168.3.104', '192.168.3.104']
         client = ParallelSSHClient(hosts, user='yan',
@@ -36,7 +36,7 @@ if __name__ == '__main__':
         host_args = ['--rank %d' % i for i in range(len(hosts))]
         # command = '/home/yan/anaconda3/bin/python /share/distbelief/example/main.py --dataset cifar10 --batch-size 64 --mode gradient_sgd --lr 0.1 --world-size ' + str(
         #     len(hosts)) + ' --cuda %s'
-        command = '/home/yan/anaconda3/envs/torch1.3/bin/python /share/distbelief/example/Imagenet_Origin.py --world-size ' + str(
+        command = '/home/yan/anaconda3/envs/torch1.3/bin/python /share/distbelief/example/Imagenet_dist.py --world-size ' + str(
             len(hosts)) + ' %s'
         # command = '/home/yan/anaconda3/bin/python /share/distbelief/example/main.py --mode gradient_sgd --world-size ' + str(len(hosts)) + ' --cuda %s'
         # command = '/home/yan/anaconda3/envs/an4/bin/python /share/distbelief/example/main.py  --dataset an4 --mode gradient_sgd --world-size ' + str(len(hosts)) + ' --cuda %s'
@@ -44,18 +44,20 @@ if __name__ == '__main__':
         #     len(hosts)) + ' --cuda %s'
     else:
         # hosts = ['gn22', 'gn17', 'gn17', 'gn18', 'gn18']
-        hosts = ['gn02']
-        for i in ['03', '04', '05', '06', '07', '08', '09', '10']:
-            hosts.append('gn%s' % str(i))
-            hosts.append('gn%s' % str(i))
-            hosts.append('gn%s' % str(i))
-            hosts.append('gn%s' % str(i))
+        hosts = ['gpu58']
+        for i in ['58']:
+            hosts.append('gpu%s' % str(i))
+            hosts.append('gpu%s' % str(i))
+            hosts.append('gpu%s' % str(i))
+            hosts.append('gpu%s' % str(i))
         # hosts = hosts[1:]
         print('hosts:', hosts)
         client = ParallelSSHClient(hosts, timeout=1000)
         host_args = ['--rank %d' % i for i in range(len(hosts))]
-        command = '~/anaconda3/bin/python /WORK/sysu_wgwu_2/GradientServer/distbelief/example/main.py --dataset cifar10 --batch-size 16 --mode gradient_sgd --lr 0.1 --world-size ' + str(
-            len(hosts)) + ' --cuda %s'
+        # command = '~/anaconda3/bin/python /WORK/sysu_wgwu_2/GradientServer/distbelief/example/main.py --dataset cifar10 --batch-size 16 --mode gradient_sgd --lr 0.1 --world-size ' + str(
+        #     len(hosts)) + ' --cuda %s'
+        command = '/GPUFS/app_GPU/application/anaconda3/5.3.1/envs/pytorch-py36/bin/python /GPUFS/sysu_wgwu_8/GradientServer/distbelief/example/Imagenet_dist.py -data /GPUFS/sysu_wgwu_8/ImageNet --world-size ' + str(
+            len(hosts)) + ' %s'
 
     output = client.run_command(command, host_args=host_args, use_pty=True, timeout=1000)
     threads = []
@@ -75,4 +77,3 @@ if __name__ == '__main__':
     # Join is not strictly needed here as channel has already been closed and
     # command has finished, but is safe to use regardless.
     client.join(output)
-    # print(output)

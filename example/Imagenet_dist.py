@@ -10,7 +10,12 @@ from datetime import datetime
 
 import pandas
 
-os.environ['GLOO_SOCKET_IFNAME'] = 'enp3s0'
+if 'gpu' in socket.gethostname():
+    print('network in th v100')
+    os.environ['GLOO_SOCKET_IFNAME'] = 'ib0'
+else:
+    os.environ['GLOO_SOCKET_IFNAME'] = 'enp3s0'
+
 import torch
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
@@ -20,7 +25,6 @@ import torch.nn.parallel
 import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
-import torchvision.datasets as datasets
 import torchvision.models as models
 import torchvision.transforms as transforms
 from PIL import ImageFile
@@ -29,7 +33,6 @@ WORKPATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(WORKPATH)
 from distbelief.utils import constant
 from distbelief.utils.serialization import ravel_model_params
-
 from distbelief.optim import GradientSGD
 from example.main import init_server
 
@@ -45,8 +48,8 @@ parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                     choices=model_names,
                     help='model architecture: ' +
                          ' | '.join(model_names) +
-                         ' (default: resnet18)')
-parser.add_argument('-j', '--workers', default=16, type=int, metavar='N',
+                         ' (default: mobilenet_v2/resnet18)')
+parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--epochs', default=90, type=int, metavar='N',
                     help='number of total epochs to run')
@@ -106,7 +109,10 @@ def main():
     if socket.gethostname() == 'yan-pc':
         os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 1)
     elif 'gn' in socket.gethostname():
-        print('init in th')
+        print('init in K80')
+        os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 4)
+    elif 'gpu' in socket.gethostname():
+        print('init in V100')
         os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 4)
     else:
         os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 2)
@@ -252,43 +258,48 @@ def main_worker(gpu, ngpus_per_node, args):
     #     transforms.ToTensor(),
     #     normalize,
     # ]))
-    train_dataset = datasets.ImageFolder(
-        traindir,
-        transforms.Compose([
-            transforms.RandomResizedCrop(224),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            normalize,
-        ]))
-
-    if args.distributed:
-        train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
-    else:
-        # train_sampler = None
-        train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, args.world_size - 1,
-                                                                        args.rank - 1)
-
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
-        num_workers=args.workers, pin_memory=True, sampler=train_sampler)
-
-    val_loader = torch.utils.data.DataLoader(
-        datasets.ImageFolder(valdir, transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            normalize,
-        ])),
-        batch_size=args.batch_size, shuffle=False,
-        num_workers=args.workers, pin_memory=True)
+    # train_dataset = datasets.ImageFolder(
+    #     traindir,
+    #     transforms.Compose([
+    #         transforms.RandomResizedCrop(224),
+    #         transforms.RandomHorizontalFlip(),
+    #         transforms.ToTensor(),
+    #         normalize,
+    #     ]))
+    #
+    # if args.distributed:
+    #     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
+    # else:
+    #     # train_sampler = None
+    #     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, args.world_size - 1,
+    #                                                                     args.rank - 1)
+    #
+    # train_loader = torch.utils.data.DataLoader(
+    #     train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
+    #     num_workers=args.workers, pin_memory=True, sampler=train_sampler)
+    from example.ImageNet_dali_dataloader import get_imagenet_iter_dali
+    train_loader = get_imagenet_iter_dali(type='train', image_dir=args.data, batch_size=args.batch_size,
+                                          num_threads=args.workers, crop=224, device_id=0, num_gpus=1,
+                                          local_rank=args.rank - 1, world_size=args.world_size - 1)
+    val_loader = get_imagenet_iter_dali(type='val', image_dir=args.data, batch_size=args.batch_size,
+                                        num_threads=args.workers, crop=224, device_id=0, num_gpus=1, )
+    # val_loader = torch.utils.data.DataLoader(
+    #     datasets.ImageFolder(valdir, transforms.Compose([
+    #         transforms.Resize(256),
+    #         transforms.CenterCrop(224),
+    #         transforms.ToTensor(),
+    #         normalize,
+    #     ])),
+    #     batch_size=args.batch_size, shuffle=False,
+    #     num_workers=args.workers, pin_memory=True)
 
     if args.evaluate:
         validate(val_loader, model, criterion, args)
         return
 
     for epoch in range(args.start_epoch, args.epochs):
-        if args.distributed:
-            train_sampler.set_epoch(epoch)
+        # if args.distributed:
+        #     train_sampler.set_epoch(epoch)
         adjust_learning_rate(optimizer, epoch, args)
 
         # train for one epoch
@@ -338,22 +349,23 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
     losses = AverageMeter('Loss', ':.4e')
     top1 = AverageMeter('Acc@1', ':6.2f')
     top5 = AverageMeter('Acc@5', ':6.2f')
-    progress = ProgressMeter(
-        len(train_loader),
-        [batch_time, data_time, losses, top1, top5],
-        prefix="Epoch: [{}]".format(epoch))
+    progress = ProgressMeter(int(1281167 / (args.world_size - 1) / args.batch_size),
+                             [batch_time, data_time, losses, top1, top5],
+                             prefix="Epoch: [{}]".format(epoch))
 
     # switch to train mode
     model.train()
 
     end = time.time()
-    for i, (images, target) in enumerate(train_loader):
+    for i, data in enumerate(train_loader):
+        images = data[0]["data"].cuda(non_blocking=True)
+        target = data[0]["label"].squeeze().long().cuda(non_blocking=True)
         # measure data loading time
         data_time.update(time.time() - end)
 
-        if args.gpu is not None:
-            images = images.cuda(args.gpu, non_blocking=True)
-        target = target.cuda(args.gpu, non_blocking=True)
+        # if args.gpu is not None:
+        #     images = images.cuda(args.gpu, non_blocking=True)
+        # target = target.cuda(args.gpu, non_blocking=True)
 
         # compute output
         output = model(images)

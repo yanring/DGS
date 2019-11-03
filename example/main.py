@@ -2,8 +2,6 @@ import os
 import socket
 import sys
 
-import torchvision
-
 WORKPATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 print(WORKPATH)
 sys.path.append(WORKPATH)
@@ -111,36 +109,3 @@ if __name__ == "__main__":
             except Exception:
                 err_logger = Log('error', cmdlevel='ERROR', filename='err.log', backup_count=1, when='D')
                 err_logger.trace()
-    elif args.dataset == 'tinyimagenet':
-
-        args.model = 'resnet18'
-        args.momentum = 0.9
-        args.half = False
-        args.weight_decay = 1e-4
-        args.batch_size = 256
-        args.epochs = 90
-        # args.warmup = True
-        net = torchvision.models.resnet18(num_classes=200).cuda()
-        print('MODEL:%s, momentum:%f' % (args.model, args.momentum))
-        print(args)
-        assert net is not None
-        constant.MODEL_SIZE = ravel_model_params(net).numel()
-        if args.rank == 0 and not args.no_distributed:
-            if args.world_size > 17:
-                args.cuda = False
-            init_server(args, net)
-        else:
-            optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net, momentum=args.momentum,
-                                    weight_decay=args.weight_decay,
-                                    # weight_decay=5e-6,
-                                    args=args)
-            try:
-                from example.Imagenet_Origin import main
-
-                main(parser, optimizer)
-            except Exception as e:
-                err_logger = Log('error', cmdlevel='ERROR', filename='err.log', backup_count=1, when='D')
-                err_logger.trace()
-                with open(WORKPATH + '/err.log', 'a+') as f:
-                    running_log = str(e)
-                    f.write(running_log + '\n')
