@@ -518,7 +518,7 @@ def accuracy(output, target, topk=(1,)):
 class MemoryDataLoader(object):
 
     def __init__(self, args, dataloader, path='.', dataset='imagenet'):
-        self.pickle_name = '_'.join([dataset, args.world_size, args.rank, 'data'])
+        self.pickle_name = '_'.join([dataset, str(args.world_size), str(args.rank), str(args.batch_size), 'data'])
         self.path = os.path.join(path, self.pickle_name)
         if not os.path.exists(self.path):
             self.save(dataloader)
@@ -532,7 +532,7 @@ class MemoryDataLoader(object):
     def save(self, dataloader):
         loader_list = []
         for i, (images, target) in enumerate(dataloader):
-            print('Processing dataloader: ', i + '/' + len(dataloader))
+            print(self.pickle_name, ' Processing dataloader: ', str(i) + '/' + str(len(dataloader)))
             t = (i, (images, target))
             loader_list.append(t)
 

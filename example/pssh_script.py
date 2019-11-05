@@ -82,8 +82,8 @@ if __name__ == '__main__':
         #     len(hosts)) + ' %s'
     elif args.where == 'v100':
         threads = []
-        server = ['gpu29']
-        worker = ['gpu29']
+        server = ['gpu58']
+        worker = ['gpu58']
         process_per_worker = 4
         # server
         host_args = ['--rank %d' % 0]
@@ -100,7 +100,7 @@ if __name__ == '__main__':
             host_args = ['--rank %d' % (i * len(worker) + j) for j in range(1, len(worker) + 1)]
             print(host_args)
             client = ParallelSSHClient(worker, timeout=10000)
-            command = '/GPUFS/app_GPU/application/anaconda3/5.3.1/envs/pytorch-py36/bin/python /GPUFS/sysu_wgwu_8/GradientServer/distbelief/example/Imagenet_dist.py -data /GPUFS/sysu_wgwu_8/ImageNet --world-size ' + str(
+            command = '/GPUFS/app_GPU/application/anaconda3/5.3.1/envs/19Q3-CUDA10.0-py36/bin/python /GPUFS/sysu_wgwu_8/GradientServer/distbelief/example/Imagenet_dist.py -data /GPUFS/sysu_wgwu_8/ImageNet --world-size ' + str(
                 len(worker) * process_per_worker + 1) + ' %s'
             output = client.run_command(command, host_args=host_args, use_pty=True, timeout=10000)
             for host, host_out in output.items():
