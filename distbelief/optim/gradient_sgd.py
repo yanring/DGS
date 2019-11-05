@@ -143,7 +143,7 @@ class GradientSGD(Optimizer):
                 print('Running gradient_sgd')
 
             raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, self.u_kt, self.v_kt,
-                                                         rate=0.01 * (lr / self.args.lr) / (self.args.world_size - 1),
+                                                         rate=0.01 * (lr / self.args.lr),
                                                          # rate=0.01,
                                                          #  rate=0.01,
                                                          lr=lr, momentum=self.momentum, weight_decay=self.weight_decay)

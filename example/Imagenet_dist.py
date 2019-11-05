@@ -25,6 +25,7 @@ import torch.nn.parallel
 import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
+import torchvision.datasets as datasets
 import torchvision.models as models
 import torchvision.transforms as transforms
 from PIL import ImageFile
@@ -33,8 +34,10 @@ WORKPATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(WORKPATH)
 from distbelief.utils import constant
 from distbelief.utils.serialization import ravel_model_params
+
 from distbelief.optim import GradientSGD
 from example.main import init_server
+import _pickle as pickle
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 model_names = sorted(name for name in models.__dict__
@@ -49,7 +52,7 @@ parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                     help='model architecture: ' +
                          ' | '.join(model_names) +
                          ' (default: mobilenet_v2/resnet18)')
-parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
+parser.add_argument('-j', '--workers', default=6, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--epochs', default=90, type=int, metavar='N',
                     help='number of total epochs to run')
@@ -62,7 +65,7 @@ parser.add_argument('-b', '--batch-size', default=256, type=int,
                          'using Data Parallel or Distributed Data Parallel')
 parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
                     metavar='LR', help='initial learning rate', dest='lr')
-parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
+parser.add_argument('--momentum', default=0.7, type=float, metavar='M',
                     help='momentum')
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
                     metavar='W', help='weight decay (default: 1e-4)',
@@ -258,48 +261,47 @@ def main_worker(gpu, ngpus_per_node, args):
     #     transforms.ToTensor(),
     #     normalize,
     # ]))
-    # train_dataset = datasets.ImageFolder(
-    #     traindir,
-    #     transforms.Compose([
-    #         transforms.RandomResizedCrop(224),
-    #         transforms.RandomHorizontalFlip(),
-    #         transforms.ToTensor(),
-    #         normalize,
-    #     ]))
-    #
-    # if args.distributed:
-    #     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
-    # else:
-    #     # train_sampler = None
-    #     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, args.world_size - 1,
-    #                                                                     args.rank - 1)
-    #
-    # train_loader = torch.utils.data.DataLoader(
-    #     train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
-    #     num_workers=args.workers, pin_memory=True, sampler=train_sampler)
-    from example.ImageNet_dali_dataloader import get_imagenet_iter_dali
-    train_loader = get_imagenet_iter_dali(type='train', image_dir=args.data, batch_size=args.batch_size,
-                                          num_threads=args.workers, crop=224, device_id=0, num_gpus=1,
-                                          local_rank=args.rank - 1, world_size=args.world_size - 1)
-    val_loader = get_imagenet_iter_dali(type='val', image_dir=args.data, batch_size=args.batch_size,
-                                        num_threads=args.workers, crop=224, device_id=0, num_gpus=1, )
-    # val_loader = torch.utils.data.DataLoader(
-    #     datasets.ImageFolder(valdir, transforms.Compose([
-    #         transforms.Resize(256),
-    #         transforms.CenterCrop(224),
-    #         transforms.ToTensor(),
-    #         normalize,
-    #     ])),
-    #     batch_size=args.batch_size, shuffle=False,
-    #     num_workers=args.workers, pin_memory=True)
+    train_dataset = datasets.ImageFolder(
+        traindir,
+        transforms.Compose([
+            transforms.RandomResizedCrop(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            normalize,
+        ]))
+    val_dataset = datasets.ImageFolder(valdir, transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        normalize,
+    ]))
+
+    if args.distributed:
+        train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
+    else:
+        # train_sampler = None
+        train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, args.world_size - 1,
+                                                                        args.rank - 1)
+
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
+        num_workers=args.workers, pin_memory=True, sampler=train_sampler)
+    val_loader = torch.utils.data.DataLoader(
+        val_dataset,
+        batch_size=args.batch_size, shuffle=False,
+        num_workers=args.workers, pin_memory=True)
+    if 'gpu' in socket.gethostname():
+        print('Init Dataloader in V100 cluster, using memory dataloader')
+        train_loader = MemoryDataLoader(args, train_loader).load()
+        val_loader = MemoryDataLoader(args, val_loader).load()
 
     if args.evaluate:
         validate(val_loader, model, criterion, args)
         return
 
     for epoch in range(args.start_epoch, args.epochs):
-        # if args.distributed:
-        #     train_sampler.set_epoch(epoch)
+        if args.distributed:
+            train_sampler.set_epoch(epoch)
         adjust_learning_rate(optimizer, epoch, args)
 
         # train for one epoch
@@ -333,13 +335,13 @@ def main_worker(gpu, ngpus_per_node, args):
                                                                   logs[-1]['test_accuracy'])
             f.write(running_log + '\n')
 
-        df = pandas.DataFrame(logs)
-        df.to_csv(WORKPATH + '/log/node{}_{}_{}_m{}_e{}_b{}_{}worker_dual_{}.csv'.format(args.rank - 1, args.mode,
-                                                                                         args.arch, args.momentum,
-                                                                                         args.epochs,
-                                                                                         args.batch_size,
-                                                                                         args.world_size - 1,
-                                                                                         logs[-1]['test_accuracy']),
+    df = pandas.DataFrame(logs)
+    df.to_csv(WORKPATH + '/log/node{}_{}_{}_m{}_e{}_b{}_{}worker_dual_{}.csv'.format(args.rank - 1, args.mode,
+                                                                                     args.arch, args.momentum,
+                                                                                     args.epochs,
+                                                                                     args.batch_size,
+                                                                                     args.world_size - 1,
+                                                                                     logs[-1]['test_accuracy']),
                   index_label='index')
 
 
@@ -349,23 +351,22 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
     losses = AverageMeter('Loss', ':.4e')
     top1 = AverageMeter('Acc@1', ':6.2f')
     top5 = AverageMeter('Acc@5', ':6.2f')
-    progress = ProgressMeter(int(1281167 / (args.world_size - 1) / args.batch_size),
-                             [batch_time, data_time, losses, top1, top5],
-                             prefix="Epoch: [{}]".format(epoch))
+    progress = ProgressMeter(
+        len(train_loader),
+        [batch_time, data_time, losses, top1, top5],
+        prefix="Epoch: [{}]".format(epoch))
 
     # switch to train mode
     model.train()
 
     end = time.time()
-    for i, data in enumerate(train_loader):
-        images = data[0]["data"].cuda(non_blocking=True)
-        target = data[0]["label"].squeeze().long().cuda(non_blocking=True)
+    for i, (images, target) in enumerate(train_loader):
         # measure data loading time
         data_time.update(time.time() - end)
 
-        # if args.gpu is not None:
-        #     images = images.cuda(args.gpu, non_blocking=True)
-        # target = target.cuda(args.gpu, non_blocking=True)
+        if args.gpu is not None:
+            images = images.cuda(args.gpu, non_blocking=True)
+        target = target.cuda(args.gpu, non_blocking=True)
 
         # compute output
         output = model(images)
@@ -512,6 +513,33 @@ def accuracy(output, target, topk=(1,)):
             correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
+
+
+class MemoryDataLoader(object):
+
+    def __init__(self, args, dataloader, path='.', dataset='imagenet'):
+        self.pickle_name = '_'.join([dataset, args.world_size, args.rank, 'data'])
+        self.path = os.path.join(path, self.pickle_name)
+        if not os.path.exists(self.path):
+            self.save(dataloader)
+
+    def load(self):
+        print('Loading pickle to memory')
+        with open(self.path, 'rb') as file:
+            data_loader_list = pickle.load(file)
+        return data_loader_list
+
+    def save(self, dataloader):
+        loader_list = []
+        for i, (images, target) in enumerate(dataloader):
+            print('Processing dataloader: ', i + '/' + len(dataloader))
+            t = (i, (images, target))
+            loader_list.append(t)
+
+        with open(self.path, 'wb') as file:
+            print('Saving dataloader to pickle')
+            pickle.dump(loader_list, file)
+            print('Saving dataloader Success')
 
 
 if __name__ == '__main__':
