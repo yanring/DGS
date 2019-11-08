@@ -2,7 +2,7 @@ import time
 
 import torch
 
-from distbelief.utils import constant
+from core.utils import constant
 
 current_model_size = None
 
@@ -50,22 +50,6 @@ def update_model_params(model, parameter_update, lr):
         # print(parameter.data.device,parameter_update.device)
         parameter.data.add_(-lr, parameter_update[current_index:current_index + numel].view(size))
         current_index += numel
-
-
-def gradient_filter(param):
-    rate = 0.01
-    grad = param
-    # temp = param.grad.data
-
-    # param = param.grad.data
-    topn = torch.kthvalue(abs(grad.view(1, -1)), int(grad.nelement() * (1 - rate)))
-    threshold = float(topn[0])
-    # topn = torch.topk(abs(temp.view(1, -1)), int(temp.nelement() * rate) if int(temp.nelement() * rate) != 0 else 1)
-    # threshold = float(topn[0][0][-1])
-    param[abs(param) < threshold] = 0
-    # print(abs(param.grad.data).sum())
-    # print(threshold)
-    return threshold
 
 
 def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, momentum=None, weight_decay=0):
@@ -182,27 +166,6 @@ def Aji(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, momentum=None, weight_decay
     return payload
 
 
-def worker_gradient_filter(net, rate=0.01):
-    start = time.time()
-    # rate = 0.01
-    paralist = []
-    # threshold = 0.0001
-    # paralist = []
-    for param in net.parameters():
-        temp = param.grad.data.clone()
-        topn = torch.topk(abs(temp.view(1, -1)), int(temp.nelement() * rate) if int(temp.nelement() * rate) != 0 else 1)
-        threshold = float(topn[0][0][-1])
-        if threshold == 0:
-            temp.zero_()
-            paralist.append(temp)
-            continue
-        temp[abs(temp) >= threshold] = 0
-        param.grad.data[abs(param.grad.data) < threshold] = 0
-        paralist.append(temp)
-    end = time.time()
-    return paralist
-    # print(end - start)
-
 
 def server_gradient_filter(size_list, gradients, rate=0.01):
     # print('gradients', gradients)
@@ -220,43 +183,10 @@ def server_gradient_filter(size_list, gradients, rate=0.01):
     return gradients
 
 
-def unravel_model_grad(model, parameter_update):
-    """
-    Assigns parameter_update params to model.parameters.
-    This is done by iterating through model.parameters() and assigning the relevant params in parameter_update.
-    NOTE: this function manipulates model.parameters.
-    """
-    current_index = 0  # keep track of where to read from parameter_update
-    for parameter in model.parameters():
-        numel = parameter.grad.data.numel()
-        size = parameter.grad.data.size()
-        parameter.grad.data.copy_(parameter_update[current_index:current_index + numel].view(size))
-        current_index += numel
-
-
 def ravel_sparse_gradient(temp_param):
-    # gradient_filter(net)
-    # temp_param = ravel_model_params(net, grads=True).mul_(lr)
-    # threshold = 0.0001
-    # threshold = 0.000001 * abs(temp_param).sum()
-    # print(abs(temp_param).sum())
-    # temp_param[abs(temp_param) < threshold] = 0
     indices = temp_param.nonzero()
     values = temp_param[indices]
-
-    # print('len',len(temp_param))
-    # if len(indices) > 3000000:
-    #     print("why???", len(indices), values.sum())
-    #     return torch.FloatTensor([1, 0.1])
-    # value = temp_param[temp_param != 0]
-    # print(values.sum())
-    # size = indices.numel()
     sparse_gradient = torch.cat((indices.double(), values.double())).view(-1)
-    # if indices[-1] >= 41187966:
-    # print(sum(indices))
-    #     print(sparse_gradient[int(len(sparse_gradient) / 2)-5:int(len(sparse_gradient) / 2)])
-    # print(values[-5:])
-    # print(indices.t().size(),values.view(-1).size(),temp_param.size())
     return sparse_gradient
 
 

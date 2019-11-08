@@ -1,9 +1,10 @@
 import logging
+
 import torch
 from torch.optim.optimizer import Optimizer, required
 
-from distbelief.utils.messaging import MessageCode, MessageListener, send_message
-from distbelief.utils.serialization import ravel_model_params, unravel_model_params
+from core.utils.messaging import MessageCode, MessageListener, send_message
+from core.utils.serialization import ravel_model_params, unravel_model_params
 
 _LOGGER = logging.getLogger(__name__)
 

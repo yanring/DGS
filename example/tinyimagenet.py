@@ -111,7 +111,7 @@ def validate(test_loader, model, criterion):
 def main():
     args = parser.parse_args()
     args.gpu = 0
-    # args.data = '/share/distbelief/data/tiny-imagenet-200/'
+    # args.data = '/share/DGS/data/tiny-imagenet-200/'
     args.data = '/home/yan/data/'
     traindir = os.path.join(args.data, 'train')  # /train/ を指定されたパスに追加
     testdir = os.path.join(args.data, 'val')

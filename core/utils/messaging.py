@@ -10,7 +10,7 @@ from threading import Thread
 import torch
 import torch.distributed as dist
 
-from distbelief.utils.serialization import ravel_model_params
+from core.utils.serialization import ravel_model_params
 
 _LOGGER = logging.getLogger(__name__)
 

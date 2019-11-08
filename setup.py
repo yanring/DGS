@@ -4,14 +4,14 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="pytorch-distbelief",
+    name="pytorch-DGS",
     version="0.1.0",
     author="Jesse Cai",
     author_email="jcjessecai@gmail.com",
     description="Distributed training for pytorch",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/ucla-labx/distbelief",
+    url="https://github.com/ucla-labx/DGS",
     packages=setuptools.find_packages(),
     classifiers=(
         "Programming Language :: Python :: 3",

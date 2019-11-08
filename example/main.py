@@ -5,17 +5,17 @@ import sys
 WORKPATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 print(WORKPATH)
 sys.path.append(WORKPATH)
-from distbelief.optim import GradientSGD
-from distbelief.utils.log import Log
+from core.optim import GradientSGD
+from core.utils.log import Log
 
-from distbelief.utils.serialization import ravel_model_params
+from core.utils.serialization import ravel_model_params
 
-from distbelief.utils import constant
+from core.utils import constant
 
 import argparse
 import torch.distributed as dist
 from example.models import *
-from distbelief.server import GradientServer
+from core.server import GradientServer
 
 
 def init_server(args, net):

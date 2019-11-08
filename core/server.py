@@ -1,6 +1,6 @@
 # 
 """
-Parameter server for distbelief
+Parameter server for DGS
 """
 import logging
 import threading
@@ -8,9 +8,9 @@ import threading
 import torch
 import torch.optim
 
-from distbelief.utils.messaging import MessageCode, MessageListener, send_message, GSMessageCode, \
+from core.utils.messaging import MessageCode, MessageListener, send_message, GSMessageCode, \
     GradientMessageListener
-from distbelief.utils.serialization import ravel_model_params, ravel_sparse_gradient, unravel_sparse_gradient
+from core.utils.serialization import ravel_model_params, ravel_sparse_gradient, unravel_sparse_gradient
 
 _LOGGER = logging.getLogger(__name__)
 cond = threading.Condition()

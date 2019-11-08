@@ -32,10 +32,10 @@ from PIL import ImageFile
 
 WORKPATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(WORKPATH)
-from distbelief.utils import constant
-from distbelief.utils.serialization import ravel_model_params
+from core.utils import constant
+from core.utils.serialization import ravel_model_params
 
-from distbelief.optim import GradientSGD
+from core.optim import GradientSGD
 from example.main import init_server
 import _pickle as pickle
 

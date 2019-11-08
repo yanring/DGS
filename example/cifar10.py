@@ -4,7 +4,7 @@ import time
 
 from torch.optim.lr_scheduler import MultiStepLR
 
-from distbelief.utils.GradualWarmupScheduler import GradualWarmupScheduler
+from core.utils.GradualWarmupScheduler import GradualWarmupScheduler
 
 WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(WORKPATH)
