@@ -155,7 +155,6 @@ def Aji(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, momentum=None, weight_decay
     start = time.time()
     current_index = 0
     # u_kt.mul_(momentum)
-    sum = 0
     for param in net.parameters():
         numel = param.data.numel()
         # layer_u_kt = u_kt[current_index:current_index + numel]
@@ -171,7 +170,6 @@ def Aji(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, momentum=None, weight_decay
         except Exception as e:
             print(e)
             print(k, layer_v_kt.nelement())
-            # print(layer_v_kt)
         threshold = float(topn[0][-1])
         mask = (abs(layer_v_kt) > threshold).float()
         payload[current_index:current_index + numel].copy_(layer_v_kt.mul(mask))

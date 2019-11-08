@@ -12,7 +12,7 @@ import pandas
 
 if 'gpu' in socket.gethostname():
     print('network in th v100')
-    os.environ['GLOO_SOCKET_IFNAME'] = 'ib0'
+    os.environ['GLOO_SOCKET_IFNAME'] = 'enp183s0f0`'
 else:
     os.environ['GLOO_SOCKET_IFNAME'] = 'enp3s0'
 
@@ -52,7 +52,7 @@ parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                     help='model architecture: ' +
                          ' | '.join(model_names) +
                          ' (default: mobilenet_v2/resnet18)')
-parser.add_argument('-j', '--workers', default=6, type=int, metavar='N',
+parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--epochs', default=90, type=int, metavar='N',
                     help='number of total epochs to run')
@@ -135,6 +135,9 @@ def main():
         print("=> creating server '{}'".format(args.arch))
         model = models.__dict__[args.arch]()
         init_server(args, model)
+        exit(999)
+
+    
     args.gpu = args.rank % torch.cuda.device_count()
     if args.gpu is not None:
         warnings.warn('You have chosen a specific GPU. This will completely '
@@ -255,12 +258,6 @@ def main_worker(gpu, ngpus_per_node, args):
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 
-    # train_dataset = torchvision.datasets.ImageNet('/home/yan/mnt/', download=True, transform=transforms.Compose([
-    #     transforms.RandomResizedCrop(224),
-    #     transforms.RandomHorizontalFlip(),
-    #     transforms.ToTensor(),
-    #     normalize,
-    # ]))
     train_dataset = datasets.ImageFolder(
         traindir,
         transforms.Compose([
@@ -292,8 +289,8 @@ def main_worker(gpu, ngpus_per_node, args):
         num_workers=args.workers, pin_memory=True)
     if 'gpu' in socket.gethostname():
         print('Init Dataloader in V100 cluster, using memory dataloader')
-        train_loader = MemoryDataLoader(args, train_loader).load()
-        val_loader = MemoryDataLoader(args, val_loader).load()
+        # train_loader = MemoryDataLoader(args, train_loader,'train').load()
+        val_loader = MemoryDataLoader(args, val_loader, 'val').load()
 
     if args.evaluate:
         validate(val_loader, model, criterion, args)
@@ -335,13 +332,12 @@ def main_worker(gpu, ngpus_per_node, args):
                                                                   logs[-1]['test_accuracy'])
             f.write(running_log + '\n')
 
-    df = pandas.DataFrame(logs)
-    df.to_csv(WORKPATH + '/log/node{}_{}_{}_m{}_e{}_b{}_{}worker_dual_{}.csv'.format(args.rank - 1, args.mode,
-                                                                                     args.arch, args.momentum,
-                                                                                     args.epochs,
-                                                                                     args.batch_size,
-                                                                                     args.world_size - 1,
-                                                                                     logs[-1]['test_accuracy']),
+        df = pandas.DataFrame(logs)
+        df.to_csv(WORKPATH + '/log/node{}_{}_{}_m{}_e{}_b{}_{}worker.csv'.format(args.rank - 1, args.mode,
+                                                                                 args.arch, args.momentum,
+                                                                                 args.epochs,
+                                                                                 args.batch_size,
+                                                                                 args.world_size - 1, ),
                   index_label='index')
 
 
@@ -413,7 +409,8 @@ def validate(val_loader, model, criterion, args):
 
     with torch.no_grad():
         end = time.time()
-        for i, (images, target) in enumerate(val_loader):
+        # check
+        for i, (images, target) in val_loader:
             if args.gpu is not None:
                 images = images.cuda(args.gpu, non_blocking=True)
             target = target.cuda(args.gpu, non_blocking=True)
@@ -517,8 +514,8 @@ def accuracy(output, target, topk=(1,)):
 
 class MemoryDataLoader(object):
 
-    def __init__(self, args, dataloader, path='.', dataset='imagenet'):
-        self.pickle_name = '_'.join([dataset, str(args.world_size), str(args.rank), str(args.batch_size), 'data'])
+    def __init__(self, args, dataloader, type, path='.', dataset='imagenet'):
+        self.pickle_name = '_'.join([dataset, str(args.batch_size), type])
         self.path = os.path.join(path, self.pickle_name)
         if not os.path.exists(self.path):
             self.save(dataloader)
