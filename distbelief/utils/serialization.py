@@ -89,9 +89,12 @@ def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, moment
             param.grad.data.add_(weight_decay, param.data)
         layer_u_kt.add_(param.grad.data.view(-1).mul(lr))
         k = int(numel * rate) if int(numel * rate) != 0 else 1
-        topn = torch.topk(abs(layer_u_kt), k)
-        threshold = float(topn[0][-1])
-        mask = (abs(layer_u_kt) >= threshold).float()
+        k = numel - k
+        abs_layer_u_kt = layer_u_kt.abs()
+        threshold = torch.kthvalue(abs_layer_u_kt, k).values
+        # topn = torch.topk(abs(layer_u_kt), k)
+        # threshold = float(topn[0][-1])
+        mask = abs_layer_u_kt.gt(threshold).float()
         # print(mask.sum()-len(layer_u_kt))
         payload[current_index:current_index + numel].copy_(layer_u_kt.mul(mask))
         layer_u_kt.add_(layer_u_kt.mul(1 - mask).mul(1 / momentum - 1))
@@ -265,7 +268,7 @@ def unravel_sparse_gradient(sparse_gradient):
     size = torch.Size([constant.MODEL_SIZE])
     # print('3',v.sum())
     try:
-        dense_gradient = torch.sparse.FloatTensor(i.reshape(1, -1).long(), v.float(), size).to_dense()
+        dense_gradient = torch.sparse_coo_tensor(i.reshape(1, -1).long(), v.float(), size, device=torch.device('cuda'))
     except Exception as e:
         print(i, v)
         print('sum indice', sum(i))

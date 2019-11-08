@@ -28,7 +28,7 @@ if __name__ == '__main__':
         threads = []
         server = ['192.168.3.100']
         worker = ['192.168.3.101', '192.168.3.102', '192.168.3.103', '192.168.3.104']
-        process_per_worker = 2
+        process_per_worker = 1
         # command = '/home/yan/anaconda3/bin/python /share/distbelief/example/main.py --dataset cifar10 --batch-size 64 --mode gradient_sgd --lr 0.1 --world-size ' + str(
         #     len(hosts)) + ' --cuda %s'
         # command = '/home/yan/anaconda3/bin/python /share/distbelief/example/main.py --mode gradient_sgd --world-size ' + str(len(hosts)) + ' --cuda %s'
