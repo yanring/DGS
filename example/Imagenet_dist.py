@@ -12,7 +12,7 @@ import pandas
 
 if 'gpu' in socket.gethostname():
     print('network in th v100')
-    os.environ['GLOO_SOCKET_IFNAME'] = 'enp183s0f0`'
+    os.environ['GLOO_SOCKET_IFNAME'] = 'enp183s0f0'
 else:
     os.environ['GLOO_SOCKET_IFNAME'] = 'enp3s0'
 
@@ -406,7 +406,8 @@ def validate(val_loader, model, criterion, args):
 
     # switch to evaluate mode
     model.eval()
-
+    if 'gpu' not in socket.gethostname():
+        val_loader = enumerate(val_loader)
     with torch.no_grad():
         end = time.time()
         # check
