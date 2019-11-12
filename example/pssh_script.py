@@ -53,7 +53,7 @@ if __name__ == '__main__':
             print(host_args)
             client = ParallelSSHClient(worker, timeout=10000, proxy_host='172.18.233.41', proxy_user='yan',
                                        proxy_port=10000, )
-            command = '/home/yan/anaconda3/envs/torch1.3/bin/python /share/DGS/example/Imagenet_dist.py --mode asgd --world-size ' + str(
+            command = '/home/yan/anaconda3/envs/torch1.3/bin/python /share/DGS/example/Imagenet_dist.py --mode DGC --world-size ' + str(
                 len(worker) * process_per_worker + 1) + ' %s'
             output = client.run_command(command, host_args=host_args, use_pty=True, timeout=10000)
             for host, host_out in output.items():
@@ -100,7 +100,7 @@ if __name__ == '__main__':
             host_args = ['--rank %d' % j for j in range(i, i + len(worker) * process_per_worker, process_per_worker)]
             print(host_args)
             client = ParallelSSHClient(worker, timeout=10000)
-            command = '/GPUFS/app_GPU/application/anaconda3/5.3.1/envs/pytorch-py36/bin/python /GPUFS/sysu_wgwu_8/GradientServer/DGS/example/Imagenet_dist.py -data /GPUFS/sysu_wgwu_8/ImageNet --mode asgd --epoch 120 --momentum 0.45 --world-size ' + str(
+            command = '/GPUFS/app_GPU/application/anaconda3/5.3.1/envs/pytorch-py36/bin/python /GPUFS/sysu_wgwu_8/GradientServer/DGS/example/Imagenet_dist.py -data /GPUFS/sysu_wgwu_8/ImageNet --mode dgc --epoch 120 --momentum 0.45 --world-size ' + str(
                 len(worker) * process_per_worker + 1) + ' %s'
             output = client.run_command(command, host_args=host_args, use_pty=True, timeout=10000)
             for host, host_out in output.items():

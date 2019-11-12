@@ -377,8 +377,8 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
             'timestamp': datetime.now(),
             'iteration': i,
             'training_loss': loss.item(),
-            'training_accuracy': acc1,
-            'training_accuracy5': acc5,
+            'training_accuracy': acc1.tolist()[0],
+            'training_accuracy5': acc5.tolist()[0],
         }
         logs.append(log_obj)
         # compute gradient and do SGD step
@@ -436,7 +436,8 @@ def validate(val_loader, model, criterion, args):
         # TODO: this should also be done with the ProgressMeter
         print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
               .format(top1=top1, top5=top5))
-        logs[-1]['test_loss'], logs[-1]['test_accuracy'], logs[-1]['test_accuracy5'] = (loss.item(), top1.avg, top5.avg)
+        logs[-1]['test_loss'], logs[-1]['test_accuracy'], logs[-1]['test_accuracy5'] = (
+        loss.item(), top1.avg.item(), top5.avg.item())
 
     return top1.avg
 
