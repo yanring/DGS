@@ -76,8 +76,6 @@ def worker_gradient_executor(net, payload, u_kt, v_kt, rate=0.01, lr=0.1, moment
         k = numel - k
         abs_layer_u_kt = layer_u_kt.abs()
         threshold = torch.kthvalue(abs_layer_u_kt, k).values
-        # topn = torch.topk(abs(layer_u_kt), k)
-        # threshold = float(topn[0][-1])
         mask = abs_layer_u_kt.gt(threshold).float()
         # print(mask.sum()-len(layer_u_kt))
         payload[current_index:current_index + numel].copy_(layer_u_kt.mul(mask))
@@ -174,12 +172,12 @@ def server_gradient_filter(size_list, gradients, rate=0.01):
         numel = size
         temp = gradients[current_index:current_index + numel]
         current_index += numel
-        topn = torch.topk(abs(temp), int(temp.nelement() * rate) if int(temp.nelement() * rate) != 0 else 1)
-        threshold = float(topn[0][-1])
-        # topn = torch.kthvalue(abs(temp), int(size * (1 - rate)))
-        # threshold = float(topn[0])
-        if threshold > 0:
-            temp[abs(temp) < threshold] = 0
+        k = int(numel * rate) if int(numel * rate) != 0 else 1
+        k = numel - k
+        abs_temp = temp.abs()
+        threshold = torch.kthvalue(abs_temp, k).values
+        mask = abs_temp.gt(threshold)
+        temp.mul_(mask)
     return gradients
 
 

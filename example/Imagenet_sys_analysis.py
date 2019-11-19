@@ -137,7 +137,6 @@ def main():
         init_server(args, model)
         exit(999)
 
-    
     args.gpu = args.rank % torch.cuda.device_count()
     if args.gpu is not None:
         warnings.warn('You have chosen a specific GPU. This will completely '
@@ -344,12 +343,15 @@ def main_worker(gpu, ngpus_per_node, args):
 def train(train_loader, model, criterion, optimizer, epoch, args):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
+    comm_time = AverageMeter('Comm', ':6.3f')
+    cal_time = AverageMeter('Cal', ':6.3f')
+    final_time = AverageMeter('Final', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
     top1 = AverageMeter('Acc@1', ':6.2f')
     top5 = AverageMeter('Acc@5', ':6.2f')
     progress = ProgressMeter(
         len(train_loader),
-        [batch_time, data_time, losses, top1, top5],
+        [batch_time, data_time, comm_time, cal_time, final_time, losses],
         prefix="Epoch: [{}]".format(epoch))
 
     # switch to train mode
@@ -382,8 +384,8 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         }
         logs.append(log_obj)
         # compute gradient and do SGD step
-        optimizer.zero_grad()
-        loss.backward()
+        # optimizer.zero_grad()
+        # loss.backward()
         optimizer.step()
 
         # measure elapsed time
@@ -437,7 +439,7 @@ def validate(val_loader, model, criterion, args):
         print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
               .format(top1=top1, top5=top5))
         logs[-1]['test_loss'], logs[-1]['test_accuracy'], logs[-1]['test_accuracy5'] = (
-        loss.item(), top1.avg.item(), top5.avg.item())
+            loss.item(), top1.avg.item(), top5.avg.item())
 
     return top1.avg
 
