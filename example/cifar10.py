@@ -35,7 +35,7 @@ def get_dataset(args, transform_train, transform_test):
                                               transform=transform_train)
         testset = torchvision.datasets.MNIST(root='%s/data' % WORKPATH, train=False, download=True,
                                              transform=transform_test)
-    else:
+    elif args.dataset == 'cifar10':
         trainset = torchvision.datasets.CIFAR10(root='%s/data' % WORKPATH, train=True, download=True,
                                                 transform=transform_train)
         testset = torchvision.datasets.CIFAR10(root='%s/data' % WORKPATH, train=False, download=True,
@@ -162,24 +162,7 @@ def cifar10(args, optimizer, net):
                                                                   epoch,
                                                                   logs[-1]['test_accuracy'])
             f.write(running_log + '\n')
-            # if args.rank == 1:
-        #     if args.no_distributed:
-        #         if args.cuda:
-        #             df.to_csv(
-        #                 WORKPATH + '/log/tmp_gpu_{}_{}_m{}_e{}_b{}.csv'.format(args.mode, args.model, args.momentum,
-        #                                                                        args.epochs,
-        #                                                                        args.batch_size),
-        #                 index_label='index')
-        #         else:
-        #             df.to_csv(WORKPATH + '/log/tmp_single.csv', index_label='index')
-        #     else:
-        #         df.to_csv(
-        #             WORKPATH + '/log/tmp_node{}_{}_{}_m{}_e{}_b{}_dual_{}worker.csv'.format(args.rank - 1, args.mode,
-        #                                                                                     args.model, args.momentum,
-        #                                                                                     args.epochs,
-        #                                                                                     args.batch_size,
-        #                                                                                     args.world_size - 1),
-        #             index_label='index')
+
     print(df)
     if args.no_distributed:
         if args.cuda:
@@ -244,21 +227,29 @@ if __name__ == "__main__":
                         help='input batch size for training (default: 64)')
     parser.add_argument('--lr', type=float, default=0.1, metavar='LR', help='learning rate (default: 0.1)')
     parser.add_argument('--momentum', type=float, default=0.0, metavar='momentum', help='momentum (default: 0.0)')
+    parser.add_argument('--wd', '--weight-decay', default=5e-4, type=float,
+                        metavar='W', help='weight decay (default: 5e-4)',
+                        dest='weight_decay')
     parser.add_argument('--cuda', action='store_true', default=True, help='use CUDA for training')
     parser.add_argument('--warmup', action='store_true', default=False, help='use warmup or not')
     parser.add_argument('--log-interval', type=int, default=10, metavar='N', help='how often to evaluate and print out')
     parser.add_argument('--no-distributed', action='store_true', default=False,
                         help='whether to use DownpourSGD or normal SGD')
-    parser.add_argument('--rank', type=int, metavar='N',
+    parser.add_argument('--rank', type=int, default=0, metavar='N',
                         help='rank of current process (0 is server, 1+ is training node)')
     parser.add_argument('--world-size', type=int, default=3, metavar='N', help='size of the world')
     # parser.add_argument('--server', action='store_true', default=False, help='server node?')
-    parser.add_argument('--dataset', type=str, default='CIFAR10', help='which dataset to train on')
+    parser.add_argument('--dataset', type=str, default='cifar10', help='which dataset to train on')
     parser.add_argument('--master', type=str, default='localhost', help='ip address of the master (server) node')
     parser.add_argument('--port', type=str, default='29500', help='port on master node to communicate with')
     parser.add_argument('--mode', type=str, default='gradient_sgd', help='gradient_sgd, dgc, Aji or asgd')
-    parser.add_argument('--model', type=str, default='AlexNet', help='AlexNet, ResNet18, ResNet50')
+    parser.add_argument('--model', type=str, default='ResNet18', help='AlexNet, ResNet18, ResNet50')
+    parser.add_argument('--network-interface', type=str, default=None,
+                        help='By default, Gloo backends will try to find the right network interface to use. '
+                             'If the automatically detected interface is not correct, you can override it ')
     args = parser.parse_args()
+    if args.network_interface:
+        os.environ['GLOO_SOCKET_IFNAME'] = args.network_interface
     if args.cuda:
         if socket.gethostname() == 'yan-pc':
             os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 1)
@@ -273,12 +264,6 @@ if __name__ == "__main__":
     net = None
 
     if args.dataset == 'cifar10':
-        from example.cifar10 import cifar10, init_net
-
-        args.model = 'ResNet18'
-        args.momentum = 0.7
-        args.half = False
-        args.weight_decay = 5e-4
         args.warmup = False
         net = init_net(args)
         print('MODEL:%s, momentum:%f' % (args.model, args.momentum))
@@ -291,6 +276,5 @@ if __name__ == "__main__":
         else:
             optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net, momentum=args.momentum,
                                     weight_decay=args.weight_decay,
-                                    # weight_decay=5e-6,
                                     args=args)
             cifar10(args, optimizer, net)

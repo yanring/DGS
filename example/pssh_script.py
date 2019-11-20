@@ -34,7 +34,7 @@ if __name__ == '__main__':
         host_args = ['--rank %d' % 0]
         client = ParallelSSHClient(server, timeout=10000, proxy_host='172.18.233.41', proxy_user='yan',
                                    proxy_port=10000, )
-        command = '/home/yan/anaconda3/envs/torch1.3/bin/python /share/DGS/example/cifar10.py --world-size ' + str(
+        command = '/home/yan/anaconda3/envs/torch1.3/bin/python /share/DGS/example/cifar10.py --network-interface enp3s0 --world-size ' + str(
             len(worker) * process_per_worker + 1) + ' %s'
         output = client.run_command(command, host_args=host_args, use_pty=True, timeout=10000)
         for host, host_out in output.items():
@@ -47,7 +47,7 @@ if __name__ == '__main__':
             print(host_args)
             client = ParallelSSHClient(worker, timeout=10000, proxy_host='172.18.233.41', proxy_user='yan',
                                        proxy_port=10000, )
-            command = '/home/yan/anaconda3/envs/torch1.3/bin/python /share/DGS/example/cifar10.py --mode aji --world-size ' + str(
+            command = '/home/yan/anaconda3/envs/torch1.3/bin/python /share/DGS/example/cifar10.py --network-interface enp3s0  --mode aji --world-size ' + str(
                 len(worker) * process_per_worker + 1) + ' %s'
             output = client.run_command(command, host_args=host_args, use_pty=True, timeout=10000)
             for host, host_out in output.items():
@@ -59,21 +59,6 @@ if __name__ == '__main__':
         exit(12580)
     elif args.where == 'th':
         pass
-        # hosts = ['gn22', 'gn17', 'gn17', 'gn18', 'gn18']
-        # hosts = ['gpu30']
-        # for i in ['30']:
-        #     hosts.append('gpu%s' % str(i))
-        #     hosts.append('gpu%s' % str(i))
-        #     hosts.append('gpu%s' % str(i))
-        #     hosts.append('gpu%s' % str(i))
-        # # hosts = hosts[1:]
-        # print('hosts:', hosts)
-        # client = ParallelSSHClient(hosts, timeout=1000)
-        # host_args = ['--rank %d' % i for i in range(len(hosts))]
-        # # command = '~/anaconda3/bin/python /WORK/sysu_wgwu_2/GradientServer/DGS/example/main.py --dataset cifar10 --batch-size 16 --mode gradient_sgd --lr 0.1 --world-size ' + str(
-        # #     len(hosts)) + ' --cuda %s'
-        # command = '/GPUFS/app_GPU/application/anaconda3/5.3.1/envs/pytorch-py36/bin/python /GPUFS/sysu_wgwu_8/GradientServer/DGS/example/Imagenet_dist.py -data /GPUFS/sysu_wgwu_8/ImageNet --world-size ' + str(
-        #     len(hosts)) + ' %s'
     elif args.where == 'v100':
         threads = []
         server = ['gpu2']
