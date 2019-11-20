@@ -1,13 +1,18 @@
+import argparse
 import os
+import socket
 import sys
 import time
 
-from torch.optim.lr_scheduler import MultiStepLR
-
-from core.utils.GradualWarmupScheduler import GradualWarmupScheduler
-
 WORKPATH = os.path.abspath(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.append(WORKPATH)
+from torch.optim.lr_scheduler import MultiStepLR
+
+from core.optim import GradientSGD
+from core.utils import constant
+from core.utils.GradualWarmupScheduler import GradualWarmupScheduler
+from core.utils.serialization import ravel_model_params
+from example.main import init_server
 
 import torchvision
 import torchvision.transforms as transforms
@@ -227,3 +232,65 @@ def evaluate(net, testloader, args, verbose=False):
         print(classification_report(predicted, labels, target_names=classes))
 
     return test_loss, test_accuracy
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Distbelief training example')
+
+    parser.add_argument('--test-batch-size', type=int, default=20000, metavar='N',
+                        help='input batch size for testing (default: 10000)')
+    parser.add_argument('--epochs', type=int, default=50, metavar='N', help='number of epochs to train (default: 20)')
+    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
+                        help='input batch size for training (default: 64)')
+    parser.add_argument('--lr', type=float, default=0.1, metavar='LR', help='learning rate (default: 0.1)')
+    parser.add_argument('--momentum', type=float, default=0.0, metavar='momentum', help='momentum (default: 0.0)')
+    parser.add_argument('--cuda', action='store_true', default=True, help='use CUDA for training')
+    parser.add_argument('--warmup', action='store_true', default=False, help='use warmup or not')
+    parser.add_argument('--log-interval', type=int, default=10, metavar='N', help='how often to evaluate and print out')
+    parser.add_argument('--no-distributed', action='store_true', default=False,
+                        help='whether to use DownpourSGD or normal SGD')
+    parser.add_argument('--rank', type=int, metavar='N',
+                        help='rank of current process (0 is server, 1+ is training node)')
+    parser.add_argument('--world-size', type=int, default=3, metavar='N', help='size of the world')
+    # parser.add_argument('--server', action='store_true', default=False, help='server node?')
+    parser.add_argument('--dataset', type=str, default='CIFAR10', help='which dataset to train on')
+    parser.add_argument('--master', type=str, default='localhost', help='ip address of the master (server) node')
+    parser.add_argument('--port', type=str, default='29500', help='port on master node to communicate with')
+    parser.add_argument('--mode', type=str, default='gradient_sgd', help='gradient_sgd, dgc, Aji or asgd')
+    parser.add_argument('--model', type=str, default='AlexNet', help='AlexNet, ResNet18, ResNet50')
+    args = parser.parse_args()
+    if args.cuda:
+        if socket.gethostname() == 'yan-pc':
+            os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 1)
+        elif 'gn' in socket.gethostname():
+            print('init in th')
+            os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 4)
+        else:
+            os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 2)
+            # os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+        print('Using device%s, device count:%d' % (os.environ['CUDA_VISIBLE_DEVICES'], torch.cuda.device_count()))
+
+    net = None
+
+    if args.dataset == 'cifar10':
+        from example.cifar10 import cifar10, init_net
+
+        args.model = 'ResNet18'
+        args.momentum = 0.7
+        args.half = False
+        args.weight_decay = 5e-4
+        args.warmup = False
+        net = init_net(args)
+        print('MODEL:%s, momentum:%f' % (args.model, args.momentum))
+        assert net is not None
+        constant.MODEL_SIZE = ravel_model_params(net).numel()
+        if args.rank == 0 and not args.no_distributed:
+            if args.cuda is False:
+                print('server init in cpu')
+            init_server(args, net)
+        else:
+            optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net, momentum=args.momentum,
+                                    weight_decay=args.weight_decay,
+                                    # weight_decay=5e-6,
+                                    args=args)
+            cifar10(args, optimizer, net)
