@@ -50,7 +50,7 @@ parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                     help='model architecture: ' +
                          ' | '.join(model_names) +
                          ' (default: mobilenet_v2/resnet18)')
-parser.add_argument('-j', '--workers', default=1, type=int, metavar='N',
+parser.add_argument('-j', '--workers', default=2, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--epochs', default=90, type=int, metavar='N',
                     help='number of total epochs to run')
@@ -349,7 +349,7 @@ def main_worker(gpu, ngpus_per_node, args):
         #     }, is_best)
 
         # running log
-        if epoch == 0:
+        if epoch == 1:
             with open(WORKPATH + '/sys_analysis.log', 'a+') as f:
                 running_log = '{}\t{}\t{}\t{}'.format(args.rank, comm_time.avg, cal_time.avg, final_time.avg)
                 f.write(running_log + '\n')
@@ -405,7 +405,8 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         optimizer.zero_grad()
         loss.backward()
         comm_time_now = optimizer.step()
-        comm_time.update(comm_time_now)
+        if comm_time_now is not None:
+            comm_time.update(comm_time_now)
 
         # measure elapsed time
         batch_time_now = time.time() - end
@@ -414,6 +415,12 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         cal_time.update(cal_time_now)
         final_time.update(cal_time_now + comm_time_now)
         end = time.time()
+
+        if i > 200:
+            with open(WORKPATH + '/sys_analysis.log', 'a+') as f:
+                running_log = '{}\t{}\t{}\t{}'.format(args.rank, comm_time.avg, cal_time.avg, final_time.avg)
+                f.write(running_log + '\n')
+            exit()
 
         if i % args.print_freq == 0:
             progress.display(i)

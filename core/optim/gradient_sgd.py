@@ -87,7 +87,7 @@ class GradientSGD(Optimizer):
         self.queue = Queue(maxsize=1)
         if args.rank > 0:
             time.sleep(0.1 * int(args.rank))
-            dist.init_process_group('gloo', init_method='file://%s/sharedfile' % WORKPATH, group_name='mygroup',
+            dist.init_process_group('gloo', init_method='tcp://192.168.3.100:23456', group_name='mygroup',
                                     world_size=args.world_size, rank=args.rank)
             print('I am node rank:%d' % dist.get_rank())
             self.listener = GradientListener(model, self.queue)
@@ -113,7 +113,7 @@ class GradientSGD(Optimizer):
             while not self.args.no_distributed and not self.listener.flag:
                 print('wait for server')
                 time.sleep(1)
-            return loss
+            # return loss
 
         # get the lr
         if self.args.rank == 1:
