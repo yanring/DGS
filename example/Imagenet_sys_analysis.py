@@ -8,8 +8,6 @@ import time
 import warnings
 from datetime import datetime
 
-import pandas
-
 if 'gpu' in socket.gethostname():
     print('network in th v100')
     os.environ['GLOO_SOCKET_IFNAME'] = 'enp183s0f0'
@@ -52,13 +50,13 @@ parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                     help='model architecture: ' +
                          ' | '.join(model_names) +
                          ' (default: mobilenet_v2/resnet18)')
-parser.add_argument('-j', '--workers', default=8, type=int, metavar='N',
+parser.add_argument('-j', '--workers', default=1, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
 parser.add_argument('--epochs', default=90, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
-parser.add_argument('-b', '--batch-size', default=256, type=int,
+parser.add_argument('-b', '--batch-size', default=64, type=int,
                     metavar='N',
                     help='mini-batch size (default: 256), this is the total '
                          'batch size of all GPUs on the current node when '
@@ -70,7 +68,7 @@ parser.add_argument('--momentum', default=0.7, type=float, metavar='M',
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
                     metavar='W', help='weight decay (default: 1e-4)',
                     dest='weight_decay')
-parser.add_argument('-p', '--print-freq', default=100, type=int,
+parser.add_argument('-p', '--print-freq', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
@@ -102,10 +100,39 @@ parser.add_argument('--cuda', action='store_true', default=True, help='use CUDA 
 parser.add_argument('--no-distributed', action='store_true', default=False,
                     help='distributed or local')
 
+
+class AverageMeter(object):
+    """Computes and stores the average and current value"""
+
+    def __init__(self, name, fmt=':f'):
+        self.name = name
+        self.fmt = fmt
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+
+    def __str__(self):
+        fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
+        return fmtstr.format(**self.__dict__)
+
+
 logs = []
 
 best_acc1 = 0
 
+comm_time = AverageMeter('Comm', ':6.3f')
+cal_time = AverageMeter('Cal', ':6.3f')
+final_time = AverageMeter('Final', ':6.3f')
 
 def main():
     args = parser.parse_args()
@@ -118,7 +145,7 @@ def main():
         print('init in V100')
         os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 4)
     else:
-        os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 1)
+        os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 2)
         # os.environ['CUDA_VISIBLE_DEVICES'] = '1'
     print('Using device%s, device count:%d' % (os.environ['CUDA_VISIBLE_DEVICES'], torch.cuda.device_count()))
     if args.seed is not None:
@@ -286,10 +313,10 @@ def main_worker(gpu, ngpus_per_node, args):
         val_dataset,
         batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
-    if 'gpu' in socket.gethostname():
-        print('Init Dataloader in V100 cluster, using memory dataloader')
-        # train_loader = MemoryDataLoader(args, train_loader,'train').load()
-        val_loader = MemoryDataLoader(args, val_loader, 'val').load()
+    # if 'gpu' in socket.gethostname():
+    #     print('Init Dataloader in V100 cluster, using memory dataloader')
+    #     # train_loader = MemoryDataLoader(args, train_loader,'train').load()
+    #     val_loader = MemoryDataLoader(args, val_loader, 'val').load()
 
     if args.evaluate:
         validate(val_loader, model, criterion, args)
@@ -304,11 +331,11 @@ def main_worker(gpu, ngpus_per_node, args):
         train(train_loader, model, criterion, optimizer, epoch, args)
 
         # evaluate on validation set
-        acc1 = validate(val_loader, model, criterion, args)
+        # acc1 = validate(val_loader, model, criterion, args)
 
         # remember best acc@1 and save checkpoint
-        is_best = acc1 > best_acc1
-        best_acc1 = max(acc1, best_acc1)
+        # is_best = acc1 > best_acc1
+        # best_acc1 = max(acc1, best_acc1)
 
         # if not args.multiprocessing_distributed or (args.multiprocessing_distributed
         #                                             and args.rank % ngpus_per_node == 0):
@@ -322,30 +349,20 @@ def main_worker(gpu, ngpus_per_node, args):
         #     }, is_best)
 
         # running log
+        if epoch == 0:
+            with open(WORKPATH + '/sys_analysis.log', 'a+') as f:
+                running_log = '{}\t{}\t{}\t{}'.format(args.rank, comm_time.avg, cal_time.avg, final_time.avg)
+                f.write(running_log + '\n')
+            exit()
 
-        with open(WORKPATH + '/running.log', 'a+') as f:
-            running_log = '{},node{}_{}_{}_m{}_e{}_{}.csv'.format(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-                                                                  args.rank - 1, args.mode,
-                                                                  args.arch, args.momentum,
-                                                                  epoch,
-                                                                  logs[-1]['test_accuracy'])
-            f.write(running_log + '\n')
 
-        df = pandas.DataFrame(logs)
-        df.to_csv(WORKPATH + '/log/node{}_{}_{}_m{}_e{}_b{}_{}worker.csv'.format(args.rank - 1, args.mode,
-                                                                                 args.arch, args.momentum,
-                                                                                 args.epochs,
-                                                                                 args.batch_size,
-                                                                                 args.world_size - 1, ),
-                  index_label='index')
+
 
 
 def train(train_loader, model, criterion, optimizer, epoch, args):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
-    comm_time = AverageMeter('Comm', ':6.3f')
-    cal_time = AverageMeter('Cal', ':6.3f')
-    final_time = AverageMeter('Final', ':6.3f')
+
     losses = AverageMeter('Loss', ':.4e')
     top1 = AverageMeter('Acc@1', ':6.2f')
     top5 = AverageMeter('Acc@5', ':6.2f')
@@ -360,7 +377,8 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
     end = time.time()
     for i, (images, target) in enumerate(train_loader):
         # measure data loading time
-        data_time.update(time.time() - end)
+        data_time_now = time.time() - end
+        data_time.update(data_time_now)
 
         if args.gpu is not None:
             images = images.cuda(args.gpu, non_blocking=True)
@@ -384,12 +402,17 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         }
         logs.append(log_obj)
         # compute gradient and do SGD step
-        # optimizer.zero_grad()
-        # loss.backward()
-        optimizer.step()
+        optimizer.zero_grad()
+        loss.backward()
+        comm_time_now = optimizer.step()
+        comm_time.update(comm_time_now)
 
         # measure elapsed time
-        batch_time.update(time.time() - end)
+        batch_time_now = time.time() - end
+        batch_time.update(batch_time_now)
+        cal_time_now = batch_time_now - data_time_now - comm_time_now
+        cal_time.update(cal_time_now)
+        final_time.update(cal_time_now + comm_time_now)
         end = time.time()
 
         if i % args.print_freq == 0:
@@ -408,12 +431,11 @@ def validate(val_loader, model, criterion, args):
 
     # switch to evaluate mode
     model.eval()
-    if 'gpu' not in socket.gethostname():
-        val_loader = enumerate(val_loader)
+
     with torch.no_grad():
         end = time.time()
         # check
-        for i, (images, target) in val_loader:
+        for i, (images, target) in enumerate(val_loader):
             if args.gpu is not None:
                 images = images.cuda(args.gpu, non_blocking=True)
             target = target.cuda(args.gpu, non_blocking=True)
@@ -450,29 +472,7 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
         shutil.copyfile(filename, 'model_best.pth.tar')
 
 
-class AverageMeter(object):
-    """Computes and stores the average and current value"""
 
-    def __init__(self, name, fmt=':f'):
-        self.name = name
-        self.fmt = fmt
-        self.reset()
-
-    def reset(self):
-        self.val = 0
-        self.avg = 0
-        self.sum = 0
-        self.count = 0
-
-    def update(self, val, n=1):
-        self.val = val
-        self.sum += val * n
-        self.count += n
-        self.avg = self.sum / self.count
-
-    def __str__(self):
-        fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
-        return fmtstr.format(**self.__dict__)
 
 
 class ProgressMeter(object):

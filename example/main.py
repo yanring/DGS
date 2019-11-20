@@ -20,8 +20,10 @@ from core.server import GradientServer
 
 def init_server(args, net):
     print('init server!!!')
+    print('server file://%s/sharedfile' % WORKPATH)
     dist.init_process_group('gloo', init_method='file://%s/sharedfile' % WORKPATH, group_name='mygroup',
                             world_size=args.world_size, rank=args.rank)
+    print('init server 2')
 
     if args.cuda:
         model = net.cuda()

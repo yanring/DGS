@@ -42,7 +42,7 @@ class GradientListener(GradientMessageListener):
             self.queue.put(gradient_version)
         elif message_code == GSMessageCode.SparseGradientUpdate:
             parameter = unravel_sparse_gradient(parameter).cuda().to_dense()
-            update_model_params(self.model, parameter, -1)
+            # update_model_params(self.model, parameter.zero(), -1)
             # print('4',parameter.sum())
 
             self.version = gradient_version
@@ -130,17 +130,19 @@ class GradientSGD(Optimizer):
         # keep track of accumulated gradients so that we can send
         # ASYNC
         if self.args.mode == 'asgd':
-            print('Running asgd')
+            # print('Running asgd')
             for param in self.model.parameters():
                 if self.weight_decay != 0:
                     param.grad.data.add_(self.weight_decay, param.data)
-            self.filter_gradient = ravel_model_params(self.model, grads=True, cuda=True).mul_(lr)
 
+            self.filter_gradient = ravel_model_params(self.model, grads=True, cuda=True).mul_(lr)
+            start = time.time()
             send_message(GSMessageCode.GradientUpdate, self.filter_gradient, dst=0,
                          gradient_version=self.listener.version + 1)
+            comm_time = time.time() - start
             self.version = self.queue.get()
             self.idx += 1
-            return loss
+            return comm_time
         elif self.args.mode == 'gradient_sgd':
             if self.version < 5:
                 print('Running gradient_sgd')
@@ -187,8 +189,11 @@ class GradientSGD(Optimizer):
             # self.version = gradient_version
             self.queue.put(self.idx)
         else:
+            start = time.time()
             send_message(GSMessageCode.SparseGradientUpdate, sparse_gradient, dst=0,
                          gradient_version=self.listener.version + 1, lr=lr)
+            comm_time = time.time() - start
+
         self.version = self.queue.get()
         self.idx += 1
-        return loss
+        return comm_time

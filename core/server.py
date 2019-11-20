@@ -100,6 +100,8 @@ class GradientServer(GradientMessageListener):
 
     def receive(self, sender, message_code, gradient_version, lr, parameter):
         global un_synced_worker, global_lr
+        # system analysis
+
         # print("rank {} Processing message: {} from sender {} gradient version {}".format(self.source, message_code.name,
         #                                                                                  sender,
         #                                                                                  gradient_version))
@@ -116,6 +118,10 @@ class GradientServer(GradientMessageListener):
             send_message(GSMessageCode.ModelUpdate, self.global_model, dst=sender,
                          gradient_version=gradient_version)
         elif message_code == GSMessageCode.SparseGradientUpdate:
+            send_message(GSMessageCode.SparseGradientUpdate, parameter, sender,
+                         gradient_version, lr=global_lr)
+            return
+
             if self.cuda:
                 send_grad = self.update(sender, gradient_version, unravel_sparse_gradient(parameter).cuda())
             else:
