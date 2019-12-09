@@ -1,5 +1,5 @@
 # DGS PyTorch
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![License](https://img.shields.io/github/license/yanring/gradientserver)]()
 
 Modern large scale machine learning applications require stochastic optimization algorithms to be implemented with distributed computational architectures. A key bottleneck is the communication overhead for exchanging information, such as stochastic gradients, among different nodes. Recently, gradient sparsification techniques have been proposed to reduce communications cost and thus alleviate the network overhead. However, most of gradient sparsification techniques consider only synchronous parallelism and cannot be applied in asynchronous distributed training.
 
