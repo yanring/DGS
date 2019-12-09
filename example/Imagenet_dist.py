@@ -9,13 +9,6 @@ import warnings
 from datetime import datetime
 
 import pandas
-
-if 'gpu' in socket.gethostname():
-    print('network in th v100')
-    os.environ['GLOO_SOCKET_IFNAME'] = 'enp183s0f0'
-else:
-    os.environ['GLOO_SOCKET_IFNAME'] = 'enp3s0'
-
 import torch
 import torch.backends.cudnn as cudnn
 import torch.distributed as dist
@@ -29,6 +22,12 @@ import torchvision.datasets as datasets
 import torchvision.models as models
 import torchvision.transforms as transforms
 from PIL import ImageFile
+
+# if 'gpu' in socket.gethostname():
+#     print('network in th v100')
+#     os.environ['GLOO_SOCKET_IFNAME'] = 'enp183s0f0'
+# else:
+#     os.environ['GLOO_SOCKET_IFNAME'] = 'enp3s0'
 
 WORKPATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(WORKPATH)
@@ -65,7 +64,7 @@ parser.add_argument('-b', '--batch-size', default=256, type=int,
                          'using Data Parallel or Distributed Data Parallel')
 parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
                     metavar='LR', help='initial learning rate', dest='lr')
-parser.add_argument('--momentum', default=0.7, type=float, metavar='M',
+parser.add_argument('--momentum', deNonefault=0.7, type=float, metavar='M',
                     help='momentum')
 parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
                     metavar='W', help='weight decay (default: 1e-4)',
@@ -93,6 +92,9 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
                          'N processes per node, which has N GPUs. This is the '
                          'fastest way to use PyTorch for either single node or '
                          'multi node data parallel training')
+parser.add_argument('--network-interface', type=str, default='enp3s0',
+                    help='By default, Gloo backends will try to find the right network interface to use. '
+                         'If the automatically detected interface is not correct, you can override it ')
 
 # my settings
 parser.add_argument('--mode', type=str, default='gradient_sgd', help='gradient_sgd, dgc, Aji or asgd')
@@ -107,6 +109,7 @@ best_acc1 = 0
 
 def main():
     args = parser.parse_args()
+    os.environ['GLOO_SOCKET_IFNAME'] = args.network_interface
     if socket.gethostname() == 'yan-pc':
         os.environ['CUDA_VISIBLE_DEVICES'] = '%d' % (args.rank % 1)
     elif 'gn' in socket.gethostname():

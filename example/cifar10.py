@@ -99,9 +99,7 @@ def cifar10(args, optimizer, net):
 
     for epoch in range(1, args.epochs + 1):  # loop over the dataset multiple times
         # scheduler.step()
-        if args.no_distributed or args.rank == 1:
-            # scheduler.step(logs[-1]['test_loss'])
-            scheduler.step(epoch)
+
         if not args.no_distributed:
             optimizer.compress_ratio = compress_ratio[epoch]
         print("Training for epoch {}, lr={}".format(epoch, scheduler.optimizer.param_groups[0]['lr']))
@@ -141,6 +139,9 @@ def cifar10(args, optimizer, net):
                       "Accuracy : {training_accuracy:6.4f} | ".format(**log_obj))
 
             logs.append(log_obj)
+            if args.no_distributed or args.rank == 1:
+                # scheduler.step(logs[-1]['test_loss'])
+                scheduler.step(epoch)
         if True:  # print every n mini-batches
             end = time.time()
             print('minibatch cost :%f, time cost: %f' % ((end - start) / (781 / (args.world_size - 1)), (end - start)))
@@ -205,7 +206,7 @@ def evaluate(net, testloader, args, verbose=False):
             total += labels.size(0)
             correct += (predicted == labels).sum()
 
-    fake_test_accuracy = accuracy_score(predicted, labels)
+    fake_test_accuracy = accuracy_score(predicted.cpu(), labels.cpu())
     test_accuracy = correct.item() / total
     print('%f,%f,%f|%f,%s' % (
         test_accuracy, correct.item(), total, fake_test_accuracy, str((predicted == labels).sum())))
@@ -226,7 +227,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                         help='input batch size for training (default: 64)')
     parser.add_argument('--lr', type=float, default=0.1, metavar='LR', help='learning rate (default: 0.1)')
-    parser.add_argument('--momentum', type=float, default=0.0, metavar='momentum', help='momentum (default: 0.0)')
+    parser.add_argument('--momentum', type=float, default=0.9, metavar='momentum', help='momentum (default: 0.9')
     parser.add_argument('--wd', '--weight-decay', default=5e-4, type=float,
                         metavar='W', help='weight decay (default: 5e-4)',
                         dest='weight_decay')
@@ -244,7 +245,7 @@ if __name__ == "__main__":
     parser.add_argument('--port', type=str, default='29500', help='port on master node to communicate with')
     parser.add_argument('--mode', type=str, default='gradient_sgd', help='gradient_sgd, dgc, Aji or asgd')
     parser.add_argument('--model', type=str, default='ResNet18', help='AlexNet, ResNet18, ResNet50')
-    parser.add_argument('--network-interface', type=str, default=None,
+    parser.add_argument('--network-interface', type=str, default='enp3s0',
                         help='By default, Gloo backends will try to find the right network interface to use. '
                              'If the automatically detected interface is not correct, you can override it ')
     args = parser.parse_args()

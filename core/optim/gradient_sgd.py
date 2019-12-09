@@ -3,7 +3,6 @@ import os
 import sys
 import threading
 import time
-from datetime import datetime
 from queue import Queue
 
 import torch.distributed as dist
@@ -23,8 +22,8 @@ lock = threading.Lock()
 class GradientListener(GradientMessageListener):
     """DownpourListener"""
 
-    def __init__(self, model, queue):
-        super(GradientListener, self).__init__(ravel_model_params(model).numel())
+    def __init__(self, model, queue, args=None):
+        super(GradientListener, self).__init__(ravel_model_params(model).numel(), source=0, args=args)
         self.lr = 0.05
         self.queue = queue
         self.version = 0
@@ -52,7 +51,7 @@ class GradientListener(GradientMessageListener):
             send_message(GSMessageCode.ModelUpdate, model, dst=0, gradient_version=0)
             print('send model to server')
         elif message_code == GSMessageCode.ModelUpdate:
-            print('sync model!', gradient_version, ' ', datetime.now(), ' synced model :', parameter.sum())
+            # print('sync model!', gradient_version, ' ', datetime.now(), ' synced model :', parameter.sum())
             unravel_model_params(self.model, parameter)
             self.version = gradient_version
             self.flag = True
@@ -90,7 +89,7 @@ class GradientSGD(Optimizer):
             dist.init_process_group('gloo', init_method='file://%s/sharedfile' % WORKPATH, group_name='mygroup',
                                     world_size=args.world_size, rank=args.rank)
             print('I am node rank:%d' % dist.get_rank())
-            self.listener = GradientListener(model, self.queue)
+            self.listener = GradientListener(model, self.queue, args=args)
             self.listener.start()
         self.tmp = 0
         self.compress_ratio = None
@@ -130,7 +129,7 @@ class GradientSGD(Optimizer):
         # keep track of accumulated gradients so that we can send
         # ASYNC
         if self.args.mode == 'asgd':
-            print('Running asgd')
+            # print('Running asgd')
             for param in self.model.parameters():
                 if self.weight_decay != 0:
                     param.grad.data.add_(self.weight_decay, param.data)
@@ -142,8 +141,8 @@ class GradientSGD(Optimizer):
             self.idx += 1
             return loss
         elif self.args.mode == 'gradient_sgd':
-            if self.version < 5:
-                print('Running gradient_sgd')
+            # if self.version < 5:
+            #     print('Running gradient_sgd')
 
             raveled_gradients = worker_gradient_executor(self.model, self.filter_gradient, self.u_kt, self.v_kt,
                                                          rate=0.01 * (lr / self.args.lr),
@@ -152,23 +151,23 @@ class GradientSGD(Optimizer):
             sparse_gradient = ravel_sparse_gradient(raveled_gradients)
 
         elif self.args.mode == 'dgc':
-            if self.version < 5:
-                print('Running dgc')
+            # if self.version < 5:
+            #     print('Running dgc')
             raveled_gradients = DGC(self.model, self.filter_gradient, self.u_kt, self.v_kt,
                                     rate=0.01,
                                     # rate=self.compress_ratio,
                                     lr=lr, momentum=self.momentum, weight_decay=self.weight_decay)
             sparse_gradient = ravel_sparse_gradient(raveled_gradients)
         elif self.args.mode == 'aji':
-            if self.version < 5:
-                print('Running aji ', self.version)
+            # if self.version < 5:
+            #     print('Running aji ', self.version)
             raveled_gradients = Aji(self.model, self.filter_gradient, self.u_kt, self.v_kt,
                                     rate=0.01,
                                     lr=lr, weight_decay=self.weight_decay)
             sparse_gradient = ravel_sparse_gradient(raveled_gradients)
         elif self.args.mode == 'sgd':
-            if self.version < 5:
-                print('Running sgd')
+            # if self.version < 5:
+            #     print('Running sgd')
             weight_decay = self.weight_decay
             momentum = self.momentum
             dampening = 0

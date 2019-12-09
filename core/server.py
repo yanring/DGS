@@ -51,7 +51,7 @@ global_lr = 0.001
 class GradientServer(GradientMessageListener):
     """GradientServer"""
 
-    def __init__(self, model, rank=0, worker_num=None, global_model=None, synced_model=None, size_list=None):
+    def __init__(self, model, rank=0, worker_num=None, global_model=None, synced_model=None, size_list=None, args=None):
         _LOGGER.info("Creating GradientServer")
         print("Creating GradientServer")
         # self.gradient_warehouse = gradient_warehouse
@@ -61,7 +61,7 @@ class GradientServer(GradientMessageListener):
         self.worker_num = worker_num
         self.global_model = global_model
         self.global_model.share_memory_()
-        super(GradientServer, self).__init__(model_size=global_model.numel(), source=rank)
+        super(GradientServer, self).__init__(model_size=global_model.numel(), source=rank, args=args)
         self.synced_model = synced_model
         self.synced_model.share_memory_()
         self.synced_version = 0

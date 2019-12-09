@@ -155,68 +155,132 @@ a31 = queue.Queue()
 b31 = queue.Queue()
 a32 = queue.Queue()
 b32 = queue.Queue()
+
+
 def rta1():
     return a1
+
+
 def rtb1():
     return b1
+
+
 def rta2():
     return a2
+
+
 def rtb2():
     return b2
+
+
 def rta3():
     return a3
+
+
 def rtb3():
     return b3
+
+
 def rta4():
     return a4
+
+
 def rtb4():
     return b4
+
+
 def rta5():
     return a5
+
+
 def rtb5():
     return b5
+
+
 def rta6():
     return a6
+
+
 def rtb6():
     return b6
+
+
 def rta7():
     return a7
+
+
 def rtb7():
     return b7
+
+
 def rta8():
     return a8
+
+
 def rtb8():
     return b8
+
+
 def rta9():
     return a9
+
+
 def rtb9():
     return b9
+
+
 def rta10():
     return a10
+
+
 def rtb10():
     return b10
+
+
 def rta11():
     return a11
+
+
 def rtb11():
     return b11
+
+
 def rta12():
     return a12
+
+
 def rtb12():
     return b12
+
+
 def rta13():
     return a13
+
+
 def rtb13():
     return b13
+
+
 def rta14():
     return a14
+
+
 def rtb14():
     return b14
+
+
 def rta15():
     return a15
+
+
 def rtb15():
     return b15
+
+
 def rta16():
     return a16
+
+
 def rtb16():
     return b16
 
@@ -355,7 +419,7 @@ class GradientMessageListener(Thread):
     base class for message listeners, extends pythons threading Thread
     """
 
-    def __init__(self, model_size, source=0):
+    def __init__(self, model_size, source=0, args=None):
         """__init__
 
         :param model: nn.Module to be defined by the user
@@ -367,7 +431,7 @@ class GradientMessageListener(Thread):
         self.cached_stamp = 0
         self.size_filename = None
         self.manager = None
-
+        self.args = args
         if dist.get_rank() == 0 and self.source == 1:
             self.init_server_queue_manager()
         elif dist.get_rank() > 0:
@@ -502,11 +566,11 @@ class GradientMessageListener(Thread):
         if socket.gethostname() == 'yan-pc' or socket.gethostname() == 'yrx-MS-7A93' or 'ubuntu' in socket.gethostname():
             print('queue init in 522')
             # self.manager = QueueManager(address=('172.18.166.108', 5000), authkey=b'abc')
-            self.manager = QueueManager(address=('192.168.3.100', 5000), authkey=b'abc')
+            self.manager = QueueManager(address=(self.args.master, 5000), authkey=b'abc')
         else:
             time.sleep(10)
             print('queue init in th')
-            self.manager = QueueManager(address=('10.20.9.2', 5000), authkey=b'abc')
+            self.manager = QueueManager(address=(self.args.master, 5000), authkey=b'abc')
         try:
             self.manager.connect()
         except Exception as e:

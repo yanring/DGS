@@ -13,7 +13,7 @@ from core.server import GradientServer
 
 
 def init_server(args, net):
-    print('init server!!!')
+    print('init server')
     dist.init_process_group('gloo', init_method='file://%s/sharedfile' % WORKPATH, group_name='mygroup',
                             world_size=args.world_size, rank=args.rank)
 
@@ -29,7 +29,7 @@ def init_server(args, net):
     synced_model = global_model.clone()
     for i in range(1, threads_num + 1):
         th = GradientServer(model=model, rank=i, worker_num=args.world_size, global_model=global_model,
-                            synced_model=synced_model, size_list=size_list)
+                            synced_model=synced_model, size_list=size_list, args=args)
         threads.append(th)
         th.start()
     for t in threads:

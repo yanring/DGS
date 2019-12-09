@@ -1,5 +1,5 @@
 setup:
-	-sudo apt-get -y virtualenv
+	sudo apt-get -y virtualenv
 	virtualenv -p python3 venv
 	. venv/bin/activate && pip install -r requirements.txt && pip install .
 
