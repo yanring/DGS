@@ -43,9 +43,11 @@ pip install -r requirements.txt
 ```
 # distributed cifar-10 example
 # On the server (rank 0 is the server)
-python example/cifar10.py --world-size 2 --rank 0 --cuda
-# On the worker
-python example/cifar10.py --world-size 2 --rank 1 --cuda
+python example/cifar10.py --world-size 3 --rank 0 --cuda
+# On the worker 1
+python example/cifar10.py --world-size 3 --rank 1 --cuda
+# On the worker 2
+python example/cifar10.py --world-size 3 --rank 2 --cuda
 ```
 
 
