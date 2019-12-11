@@ -5,7 +5,7 @@ Modern large scale machine learning applications require stochastic optimization
 
 In this project, we present a dual-way gradient sparsification approach (DGS) that is suitable for asynchronous distributed training.
 
-![Architecture of PS Based ASGD and DGS](https://yanring-1252048839.cos.ap-guangzhou.myqcloud.com/img/20191209143252.png)
+![Architecture of PS Based ASGD and DGS](https://yanring-1252048839.cos.ap-guangzhou.myqcloud.com/img/20191211100612.png)
 
 We implemented a async parameter server based on PyTorch gloo backend. Our optimizer implemented 5 training methonds: DGS, ASGD, GradientDropping, DeepGradientCompression, single node momentum SGD. 
 
