@@ -15,7 +15,7 @@ We implemented a async parameter server based on PyTorch gloo backend. Our optim
 3. Sparse communication.
 4. GPU training.
 5. DALI dataloader for imagenet.
-6. Two distributed example script: 1. cifar10 2. ImageNet.
+6. Two distributed example script: cifar10 and ImageNet.
 
 ## Performance
 
