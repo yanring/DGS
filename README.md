@@ -67,7 +67,7 @@ optimizer = GradientSGD(net.parameters(), lr=args.lr, model=net, momentum=args.m
 TODO
 
 ## Publications
-TODO
+Zijie Yan, Danyang Xiao, Mengqiang Chen, Jieying Zhou, Weigang Wu: Dual-Way Gradient Sparsification for Asynchronous Distributed Deep Learning. ICPP 2020: 49:1-49:10
 
 ## Refrence
 [1] Alham Fikri Aji and Kenneth Heaﬁeld, ‘Sparse communication for distributed gradient descent’, arXiv preprint arXiv:1704.05021, (2017).
