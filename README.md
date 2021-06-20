@@ -71,3 +71,4 @@ Zijie Yan, Danyang Xiao, Mengqiang Chen, Jieying Zhou, Weigang Wu: Dual-Way Grad
 
 ## Refrence
 [1] Alham Fikri Aji and Kenneth Heaﬁeld, ‘Sparse communication for distributed gradient descent’, arXiv preprint arXiv:1704.05021, (2017).
+[2] Jesse Cai and Rohan Varma, Implementation of Google's DistBelief paper. https://github.com/ucla-labx/distbelief
