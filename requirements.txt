@@ -6,7 +6,7 @@ future==0.18.2
 gevent==1.4.0
 greenlet==0.4.15
 joblib==0.13.2
-numpy==1.17.2
+numpy==1.22.0
 olefile==0.46
 pandas==0.25.2
 parallel-ssh==1.9.1
